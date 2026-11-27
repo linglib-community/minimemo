@@ -107,6 +107,12 @@ theorem Term.toFactor_expect (I : List ℕ) (hI : I.Nodup) (t : Term K) :
   rw [withSizes, Table.toFactor_sumOver I hI (ht.mul hw), Table.toFactor_mul ht hw]
 
 omit hW in
+/-- The table of a number has that number at every assignment. -/
+theorem Term.toFactor_lit (r : K) (σ : ∀ i, Fin (size i)) :
+    Table.toFactor size ((Term.lit r).eval size W) σ = r := by
+  simp [Term.eval, Table.toFactor, Table.get, Table.const, Table.index]
+
+omit hW in
 /-- The table of the value of a choice has, at an assignment, the value at the position of the
 choice. -/
 theorem Term.toFactor_val (i : ℕ) (v : ℕ → K) (σ : ∀ i, Fin (size i)) :

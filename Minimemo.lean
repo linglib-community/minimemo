@@ -15,6 +15,7 @@ public import Minimemo.Compile
 public import Minimemo.Belief.Basic
 public import Minimemo.Belief.ToMeasure
 public import Minimemo.Belief.Measure
+public import Minimemo.Belief.Real
 public import Minimemo.Example.NaiveListener
 public import Minimemo.Example.PragmaticListener
 public import Minimemo.Example.Knows
