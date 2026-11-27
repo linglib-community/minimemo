@@ -88,9 +88,29 @@ def interp : Interp Dom Fn ℝ := .ofField dom (call w)
 theorem arith : (interp dom w).Arith := Interp.arith_ofField _ _
 
 /-- The sizes of the choices of the model: the axes `0` and `1`, and the referent `2` and the
-utterance `3` that the listener thinks the speaker chooses. -/
+utterance `3` that the listener thinks the speaker chooses. Every other number has the size one. -/
 def size (i : ℕ) : ℕ :=
-  ([(dom .U).size, (dom .R).size, (dom .R).size, (dom .U).size] : List ℕ).getD i 0
+  ([(dom .U).size, (dom .R).size, (dom .R).size, (dom .U).size] : List ℕ).getD i 1
+
+/-- The sizes of the model are those of its program. -/
+theorem size_eq (p : Program Dom Fn) (hp : Model.program model = .ok p) :
+    p.size (interp dom w) = size dom := by
+  obtain rfl := Except.ok.inj hp
+  funext i
+  match i with
+  | 0 | 1 | 2 | 3 => rfl
+  | i + 4 => rfl
+
+omit w in
+/-- There is an assignment of a position to every choice, when the two domains are not empty: the
+results about assignments are about something. -/
+theorem nonempty_assignment (hU : 0 < (dom .U).size) (hR : 0 < (dom .R).size) :
+    Nonempty (∀ i, Fin (size dom i)) :=
+  ⟨fun i ↦ ⟨0, by
+    match i with
+    | 0 | 3 => exact hU
+    | 1 | 2 => exact hR
+    | i + 4 => exact Nat.one_pos⟩⟩
 
 /-- The terms of the tables of the program of the model. -/
 def steps : List (Term Dom Fn) := ((Model.program model).toOption.map (·.steps)).getD []

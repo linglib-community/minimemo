@@ -125,8 +125,9 @@ def Program.term {D : Type u} {F : ℕ → Type u} (p : Program D F) : Term D F 
 
 variable {D : Type u} {F : ℕ → Type u} {K : Type u} (I : Interp D F K)
 
-/-- The size of the choice `i` of a program: the size of its domain. -/
-def Program.size (p : Program D F) (i : ℕ) : ℕ := (p.doms[i]?.map fun d ↦ (I.dom d).size).getD 0
+/-- The size of the choice `i` of a program: the size of its domain. A number that is not the
+number of a choice has the size one, so that every number has a position. -/
+def Program.size (p : Program D F) (i : ℕ) : ℕ := (p.doms[i]?.map fun d ↦ (I.dom d).size).getD 1
 
 variable [Semifield K] [LinearOrder K] (size : ℕ → ℕ)
 
