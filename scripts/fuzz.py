@@ -32,6 +32,7 @@ def denotes(u, r):
 '''
 VALUES = {"U": [1, 2, 4, 8], "R": [5, 9, 10]}
 AGENTS = ["alice", "bob", "carol"]
+EARLIER = []  # the models so far that memo accepts and that refer to no other model
 
 
 class Frame:
@@ -61,6 +62,10 @@ def weight(rng, frame, new, dom, fresh=None, exact=False):
     for (b, y), (d, known) in frame.others.items():
         if d == dom and known:
             opts.append(f"1 + {rng.randint(1, 2)} * ({new} == {b}.{y})")
+    for k, d in frame.own.items():
+        if {d, dom} == {"U", "R"} and EARLIER and not exact:
+            u, r = (new, k) if dom == "U" else (k, new)
+            opts.append(f"1 + {rng.choice(EARLIER)}[{u}, {r}]()")
     if exact:
         for k, d in frame.own.items():
             if {d, dom} == {"U", "R"}:
@@ -96,12 +101,21 @@ def model(rng, index):
         fa = root.models.setdefault(a, Frame())
         kind = rng.choice(["chooses", "chooses", "knows", "thinks", "thinks", "observes",
                            "observes", "event", "forgets", "maximizes", "that", "that", "that",
-                           "snapshots"])
+                           "snapshots", "joint"])
         if kind == "chooses":
             x, d = next(fresh), rng.choice("UR")
             lines.append(f"{a}: chooses({x} in {d}, wpp={weight(rng, fa, x, d, fresh)})")
             fa.own[x] = d
             root.others[(a, x)] = [d, False]
+        elif kind == "joint":
+            (x, d), (y, e) = (next(fresh), rng.choice("UR")), (next(fresh), rng.choice("UR"))
+            with_x = fa.copy()
+            with_x.own[x] = d
+            w = f"({weight(rng, fa, x, d)}) * ({weight(rng, with_x, y, e)})"
+            lines.append(f"{a}: chooses({x} in {d}, {y} in {e}, wpp={w})")
+            for z, dz in ((x, d), (y, e)):
+                fa.own[z] = dz
+                root.others[(a, z)] = [dz, False]
         elif kind == "maximizes":
             x, d = next(fresh), rng.choice("UR")
             lines.append(f"{a}: chooses({x} in {d}, to_maximize={weight(rng, fa, x, d, exact=True)})")
@@ -175,15 +189,57 @@ def model(rng, index):
                 for (b, y), (d, known) in fp.others.items():
                     if not known:
                         terms.append(f"{a}[{past}[Pr[{b}.{y} == {rng.choice(VALUES[d])}]]]")
+    terms = rng.sample(terms, min(len(terms), 3))
+    broken = rng.random() < 0.2 and spoil(rng, root, lines, terms, fresh)
     body = "\n".join("    " + line for line in lines)
-    return (f"def fuzz{index}[u: U, r: R]():\n{body}\n"
-            f"    return E[{' + '.join(rng.sample(terms, min(len(terms), 3)))}]\n")
+    text = f"def fuzz{index}[u: U, r: R]():\n{body}\n    return E[{' + '.join(terms)}]\n"
+    if not broken and "fuzz" not in body:
+        EARLIER.append(f"fuzz{index}")
+    return text
+
+
+def spoil(rng, root, lines, terms, fresh):
+    """Add one statement or term that memo does not accept, if the model has room for one."""
+    ways = []
+    for a, fa in root.models.items():
+        mine = [x for x in fa.own if x not in "ur"]
+        unknown = [(k, v[0]) for k, v in fa.others.items() if not v[1]]
+        known = [(k, v[0]) for k, v in fa.others.items() if v[1]]
+        z = next(fresh)
+        for x in mine:  # a choice made twice
+            ways.append(("line", f"{a}: chooses({x} in {fa.own[x]}, wpp=1)"))
+        for (b, y), d in unknown:
+            # a weight that the agent is uncertain of
+            ways.append(("line", f"{a}: chooses({z} in {d}, wpp=1 + ({b}.{y} == {z}))"))
+            # an observation from the other domain
+            ways.append(("line", f"{a}: observes [{b}.{y}] is {'r' if d == 'U' else 'u'}"))
+            # a query for a value that the agent is uncertain of
+            ways.append(("term", f"{a}[{b}.{y}]"))
+            # an imagined value that the agent is uncertain of
+            ways.append(("line", f"{a}: chooses({z} in {d}, wpp=imagine["
+                                 f"{b}: chooses({z}b in {d}, wpp=1), {b}.{z}b == {z}])"))
+        for (b, y), d in known:  # an observation of a choice that the agent is certain of
+            ways.append(("line", f"{a}: observes [{b}.{y}] is {d.lower()}"))
+        for axis in "ur":  # forgetting a choice that the agent was told
+            if axis in fa.own:
+                ways.append(("line", f"{a}: forgets_about({axis})"))
+        for axis in "ur":  # forgetting a choice that the agent does not have
+            if axis not in fa.own:
+                ways.append(("line", f"{a}: forgets_about({axis})"))
+        if (a, "r") not in root.others:  # a choice that does not exist
+            ways.append(("term", f"({a}.r == r)"))
+    if not ways:
+        return False
+    kind, text = rng.choice(ways)
+    (lines if kind == "line" else terms).append(text)
+    return True
 
 
 def main():
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     count = int(sys.argv[2]) if len(sys.argv) > 2 else 20
     rng = random.Random(seed)
+    EARLIER.clear()
     models = [model(rng, i) for i in range(count)]
     names = ", ".join(f"fuzz{i}" for i in range(count))
     out = pathlib.Path(__file__).with_name("fuzz_models.py")
