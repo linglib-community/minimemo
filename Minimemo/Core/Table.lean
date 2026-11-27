@@ -6,6 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
+public import Mathlib.Order.Defs.LinearOrder
 
 /-!
 # Tables
@@ -28,6 +29,8 @@ it ignores the variables that are not its own.
 * `Memo.Core.Table.sumOver I t`: the table `t` summed over the variables in `I`, each with its
   size.
 * `Memo.Core.Table.op f ts`: the table that combines the numbers of the tables `ts` with `f`.
+* `Memo.Core.Table.best i size t`: the table with the number one where `t` is greatest along the
+  variable `i`, and zero elsewhere.
 * `Memo.Core.Table.rename links t`: the table `t` with each variable replaced by the variable
   that `links` gives it.
 -/
@@ -99,6 +102,12 @@ def sumOver [Zero K] [Add K] (I : List (ℕ × ℕ)) (t : Table K) : Table K :=
 def op [Zero K] {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K) : Table K :=
   ofFn ((List.finRange k).foldl (fun vars i ↦ union vars (ts i).vars) []) fun σ ↦
     f fun i ↦ (ts i).get σ
+
+/-- The table with the number one at the positions where `t` is greatest along the variable `i`,
+which has `size` positions, and zero elsewhere. -/
+def best [Zero K] [One K] [LinearOrder K] (i size : ℕ) (t : Table K) : Table K :=
+  ofFn t.vars fun σ ↦
+    if (List.range size).all fun j ↦ t.get (Function.update σ i j) ≤ t.get σ then 1 else 0
 
 /-- The variables of a list, each once, in increasing order. -/
 def distinct (xs : List (ℕ × ℕ)) : List (ℕ × ℕ) :=

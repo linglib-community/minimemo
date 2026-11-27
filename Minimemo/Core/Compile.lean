@@ -39,9 +39,8 @@ through these links.
 
 ## Implementation notes
 
-The translation has the statements `chooses` of one value, `observes`, `thinks`, `pass` and
-sequences, and every expression but `imagine`. On a model with another statement the program is
-`none`, as it is for a model that memo does not accept; `Memo.Core.Model.covered` tells the two
+The translation has every statement but `snapshots_self_as` and `forgets_about`, and every
+expression but `imagine`. On a model with one of these the program is `none`, as it is for a model that memo does not accept; `Memo.Core.Model.covered` tells the two
 apart.
 -/
 
@@ -158,8 +157,54 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
           agents := Function.update S.agents α (some Sα') },
         { g with
           next := g.next + 1
-          steps := g.steps.push (.chooses S.mind g.next (dom X).size (.rename Sα'.links t)) })
+          steps := g.steps.push (.chooses S.mind [(g.next, (dom X).size)] (.rename Sα'.links t)) })
     else none
+  | .choosesMax α x X e => do
+    let (Sα, g) := S.agent α g
+    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true⟩
+    let (t, deps) ← Expr.term dom e Sα'
+    if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
+      some ({ S.insert (.agent α, x) ⟨g.next, X, false⟩ with
+          agents := Function.update S.agents α (some Sα') },
+        { g with
+          next := g.next + 1
+          steps := g.steps.push (.chooses S.mind [(g.next, (dom X).size)]
+            (.rename Sα'.links (.best g.next (dom X).size t))) })
+    else none
+  | .choosesMany α xs e => do
+    let (Sα, g) := S.agent α g
+    let Sα' := xs.zipIdx.foldl (fun S p ↦ S.insert (.self, p.1.1) ⟨g.next + p.2, p.1.2, true⟩) Sα
+    let (t, deps) ← Expr.term dom e Sα'
+    if deps.all (· ∈ Sα'.certain) ∧ xs.all fun p ↦ (Sα.entries.lookup (.self, p.1)).isNone then
+      let S' := xs.zipIdx.foldl
+        (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false⟩) S
+      some ({ S' with agents := Function.update S.agents α (some Sα') },
+        { g with
+          next := g.next + xs.length
+          steps := g.steps.push (.chooses S.mind
+            (xs.zipIdx.map fun p ↦ (g.next + p.2, (dom p.1.2).size)) (.rename Sα'.links t)) })
+    else none
+  | .observesEvent α e => do
+    let (Sα, g) := S.agent α g
+    let (t, _) ← Expr.term dom e Sα
+    some ({ S with agents := Function.update S.agents α (some Sα) },
+      { g with
+        steps := (g.steps.push (.weighs Sα.mind t)).push (.observes Sα.mind (Sα.uncertain dom)) })
+  | .knows α γ y => do
+    let c ← S.entries.lookup (γ, y)
+    let (Sα, g) := S.agent α g
+    match γ with
+    | .self =>
+      let Sα' := Sα.insert (.self, y) { c with certain := true }
+      some ({ S.insert (.agent α, y) c with
+        agents := Function.update S.agents α (some Sα') }, g)
+    | .agent β =>
+      let (Sβ, g) := Sα.agent β g
+      let Sβ' := Sβ.insert (.self, y) { c with certain := true }
+      let Sα' : Scope A N D :=
+        { Sα.insert (.agent β, y) { c with certain := true } with
+          agents := Function.update Sα.agents β (some Sβ') }
+      some ({ S with agents := Function.update S.agents α (some Sα') }, g)
   | .observes α β x γ y => do
     let Sα ← S.agents α
     let c ← S.entries.lookup (γ, y)
@@ -172,7 +217,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
       some ({ S with agents := Function.update S.agents α (some Sα') },
         { g with steps := g.steps.push (.observes Sα.mind (Sα'.uncertain dom)) })
     else none
-  | _ => none
+  | .snapshot .. | .forgets .. => none
 
 /-- The **program of a model**. The mind `0` is the model's own, the axes of the model are its
 first choices, and it is certain of them. The array may depend on the axes only. -/
@@ -187,7 +232,7 @@ def Model.program (M : Model A N D K) : Option (Program K) := do
   else none
 
 /-- The entries of the array of a model, in row-major order. -/
-def Model.entries [Semifield K] (M : Model A N D K) : Option (List K) :=
+def Model.entries [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List K) :=
   (Model.program dom M).map Program.entries
 
 mutual
@@ -206,9 +251,10 @@ def Stmt.covered : Stmt A N D K → Bool
   | .pass => true
   | .seq s₁ s₂ => Stmt.covered s₁ && Stmt.covered s₂
   | .thinks _ s => Stmt.covered s
-  | .chooses _ _ _ e => Expr.covered e
-  | .observes .. => true
-  | _ => false
+  | .chooses _ _ _ e | .choosesMax _ _ _ e | .choosesMany _ _ e | .observesEvent _ e =>
+    Expr.covered e
+  | .observes .. | .knows .. => true
+  | .snapshot .. | .forgets .. => false
 
 /-- The model uses only the statements and expressions that the translation has. -/
 def Model.covered (M : Model A N D K) : Bool := Stmt.covered M.body && Expr.covered M.ret
