@@ -19,4 +19,6 @@ public import MinimemoTheory.Example.Knows
 public import MinimemoTheory.Example.Notation
 public import MinimemoTheory.Example.Posterior
 public import MinimemoTheory.Example.Real
+public import MinimemoTheory.Example.Listener
 public import MinimemoTheory.Example.Recursive
+public import MinimemoTheory.Example.RSA
