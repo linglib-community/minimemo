@@ -6,6 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import MinimemoTheory.Example.Listener
+public import MinimemoTheory.Kernel
 public import Mathlib.Analysis.SpecialFunctions.Exp
 public import Mathlib.Topology.Order.MonotoneConvergence
 public import Mathlib.Topology.Algebra.Order.Field
@@ -38,6 +39,7 @@ likely. One more depth of reasoning takes the probability `p` of the green squar
 ## Main results
 
 * `Memo.RSA.level_eq`: the array of the listener at every depth.
+* `Memo.RSA.kernel_family`: the kernel of the listener at every depth.
 * `Memo.RSA.greenSquare_eq`: on hearing *green*, the listener at depth `t` gives the green square
   the probability `prob β t`.
 * `Memo.RSA.prob_succ`: the step `p ↦ 2 / (3 + exp (β * (1 - p)))`.
@@ -243,6 +245,21 @@ theorem prob_le_half {β : ℝ} (hβ : 0 ≤ β) (t : ℕ) : 0 < prob β t ∧ p
       Real.one_le_exp (mul_nonneg hβ (by linarith [ih.2]))
     rw [prob_succ]
     exact ⟨by positivity, by rw [div_le_div_iff₀ (by positivity) (by norm_num)]; linarith⟩
+
+/-- **The kernel of the listener** at depth `t`: on hearing the utterance at a position, the
+referent at a position has the probability in the array of `prob β t`. -/
+theorem kernel_family (β : ℝ) (t i j : ℕ) :
+    family.kernel (domOf ℝ) (callOf β) (t + 1) t i {j} = ENNReal.ofReal
+      ((([[prob β t, 1 - prob β t, 0], [0, 0, 1], [1, 0, 0], [0, 1 - prob β t, prob β t]] :
+        List (List ℝ)).getD i []).getD j 0) := by
+  rw [Family.kernel, rowsKernel_apply_singleton]
+  have h : family.entries .ofField (domOf ℝ) (callOf β) (t + 1) t = arrayOf (prob β t) :=
+    level_eq β t
+  have hw : (((family.model t).axes.getLast?.map fun a ↦ (domOf ℝ a.2).size).getD 1) = 3 := rfl
+  have hc : chunks 3 (arrayOf (prob β t)) =
+      [[prob β t, 1 - prob β t, 0], [0, 0, 1], [1, 0, 0], [0, 1 - prob β t, prob β t]] := by
+    simp [chunks, arrayOf, List.range_succ]
+  rw [h, hw, hc]
 
 section Limit
 
