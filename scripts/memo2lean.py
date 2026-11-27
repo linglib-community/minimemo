@@ -9,7 +9,7 @@ from fractions import Fraction
 from textwrap import indent
 
 from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith, Op, SChoose,
-                       SForAll, SKnows, SShow, SWith)
+                       SForAll, SKnows, SObserves, SShow, SWith)
 from memo.parse import parse_memo
 
 BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq",
@@ -94,6 +94,10 @@ def stmt(s) -> str:
             return f"{head} {weight}" if len(head) + len(weight) < 88 else f"{head}\n  {weight}"
         case SShow(who=who, target_who=b, target_id=x, source_who=g, source_id=y):
             return f".observes .{ident(who)} .{ident(b)} .{ident(x)} {ref(g)} .{ident(y)}"
+        case SObserves(who=who, what=what, how="probability"):
+            return f".observesEvent .{ident(who)} ({expr(what)})"
+        case SObserves(who=who, what=what, how="boolean"):
+            return f".observesEvent .{ident(who)} (.op₁ truthy ({expr(what)}))"
         case SKnows(who=who, source_who=g, source_id=y):
             return f".knows .{ident(who)} {ref(g)} .{ident(y)}"
         case SWith(who=who, stmt=inner):

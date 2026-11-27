@@ -104,7 +104,8 @@ def main() -> int:
              "def ge (a b : ℚ) : ℚ := if a ≥ b then 1 else 0",
              "def both (a b : ℚ) : ℚ := if a ≠ 0 ∧ b ≠ 0 then 1 else 0",
              "def either (a b : ℚ) : ℚ := if a ≠ 0 ∨ b ≠ 0 then 1 else 0",
-             "def cond3 (c a b : ℚ) : ℚ := if c ≠ 0 then a else b", ""]
+             "def cond3 (c a b : ℚ) : ℚ := if c ≠ 0 then a else b",
+             "def truthy (a : ℚ) : ℚ := if a ≠ 0 then 1 else 0", ""]
     for name, slots in calls.items():
         f = getattr(examples, name)
         points = itertools.product(*[sorted({v for d in slot for v in values[d]}) for slot in slots])

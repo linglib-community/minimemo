@@ -104,9 +104,31 @@ def tempered[u: U, r: R](w):
     return Pr[listener.r_pick == r]
 
 
+def observes_that[u: U, r: R]():
+    listener: knows(u)
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
+    ]
+    listener: observes_that[speaker.u_said == u]
+    listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick])
+    return Pr[listener.r_pick == r]
+
+
+def observes_event[u: U, r: R]():
+    listener: knows(u)
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
+    ]
+    listener: observes_event(wpp=1 + 3 * (speaker.u_said == u))
+    listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick])
+    return Pr[listener.r_pick == r]
+
+
 # A model comes after the models that it refers to.
 MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
-          weighted, tempered]
+          weighted, tempered, observes_that, observes_event]
 
 # Parameter values for the comparison with memo.
 ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}

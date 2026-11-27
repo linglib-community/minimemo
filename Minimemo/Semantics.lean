@@ -38,8 +38,10 @@ frame that its statement leaves.
 ## Implementation notes
 
 The definitions follow the semantics figure of the memo paper, one case for each rule, and each
-case names its rule. The case for `knows`, which the figure does not have, follows memo: the
-agent's frame gets the choice as a known choice on the axis that it has in the current frame. The figure writes the rules as equations with premises. Here they are
+case names its rule. The cases for `knows` and `observes_event`, which the figure does not have, follow memo. For
+`knows`, the agent's frame gets the choice as a known choice on the axis that it has in the
+current frame. For `observes_event`, the tensor of the agent's frame is multiplied by the value of
+the expression and divided by its sum over the uncertain choices. The figure writes the rules as equations with premises. Here they are
 functions with values in `Option`, and the value is `none` when a premise fails. A frame that the
 figure writes as a tuple of a choice map, an agent map, a condition map and a tensor is a `Frame`.
 
@@ -156,6 +158,13 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
           ll := ll / Tensor.sum (χα.uncertainAxes dom) ll }
       some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
     else none
+  -- S-OBSERVES-EVENT
+  | .observesEvent α e => do
+    let Φα := (Φ.agents α).getD (.empty (.agent α))
+    let v ← eval e Φα n
+    let ll := Φα.ll * v.tensor
+    let Φα' : Frame A N D K := { Φα with ll := ll / Tensor.sum (Φα.choices.uncertainAxes dom) ll }
+    some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
   -- S-KNOWS
   | .knows α γ y => do
     let c ← Φ.choices.lookup (γ, y)
