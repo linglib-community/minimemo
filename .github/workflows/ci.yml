@@ -21,3 +21,8 @@ jobs:
         run: |
           python scripts/fuzz.py 1 25
           python scripts/difftest.py fuzz_models -v
+      - name: report on memo's demos
+        run: |
+          pip install matplotlib pandas seaborn tqdm ipython scipy
+          git clone --depth 1 https://github.com/kach/memo memo-src
+          python scripts/demos.py "$PWD/memo-src/demo"
