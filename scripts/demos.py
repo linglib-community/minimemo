@@ -9,7 +9,7 @@ import os
 import pathlib
 import signal
 import sys
-import traceback
+import tempfile
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -55,7 +55,11 @@ def main() -> None:
         signal.alarm(180)
         try:
             os.chdir(folder)
-            exec(compile(source(path), str(path), "exec"), {"__name__": "__main__", "__file__": str(path)})
+            # memo reads a model's source back from its file, so a notebook's code goes in a file
+            script = pathlib.Path(tempfile.mkdtemp()) / (path.stem.replace("-", "_") + ".py")
+            script.write_text(source(path))
+            exec(compile(script.read_text(), str(script), "exec"),
+                 {"__name__": "__main__", "__file__": str(script)})
         except BaseException as e:  # a demo may need data or packages that are not here
             note = f"  (stopped: {type(e).__name__})"
         finally:
