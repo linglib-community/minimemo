@@ -1,0 +1,83 @@
+"""Report which models in memo's demos minimemo can translate.
+
+    git clone --depth 1 https://github.com/kach/memo
+    python scripts/demos.py memo/demo
+"""
+import collections
+import json
+import os
+import pathlib
+import signal
+import sys
+import traceback
+
+os.environ.setdefault("MPLBACKEND", "Agg")
+
+from memo import codegen
+
+from memo2lean import Unsupported, model
+
+seen = []
+original = codegen.parse_memo
+
+
+def recording(f):
+    seen.append(f)
+    return original(f)
+
+
+codegen.parse_memo = recording
+
+
+def source(path: pathlib.Path) -> str:
+    if path.suffix == ".py":
+        return path.read_text()
+    cells = json.loads(path.read_text())["cells"]
+    lines = []
+    for cell in cells:
+        if cell["cell_type"] == "code":
+            lines += [l for l in "".join(cell["source"]).split("\n") if not l.lstrip().startswith(("%", "!"))]
+    return "\n".join(lines)
+
+
+def timeout(*_):
+    raise TimeoutError
+
+
+def main() -> None:
+    folder = pathlib.Path(sys.argv[1])
+    reasons = collections.Counter()
+    total = translated = 0
+    for path in sorted(list(folder.glob("*.py")) + list(folder.glob("*.ipynb"))):
+        seen.clear()
+        note = ""
+        signal.signal(signal.SIGALRM, timeout)
+        signal.alarm(180)
+        try:
+            os.chdir(folder)
+            exec(compile(source(path), str(path), "exec"), {"__name__": "__main__", "__file__": str(path)})
+        except BaseException as e:  # a demo may need data or packages that are not here
+            note = f"  (stopped: {type(e).__name__})"
+        finally:
+            signal.alarm(0)
+        ok, bad = 0, collections.Counter()
+        for f in seen:
+            try:
+                model(f)
+                ok += 1
+            except Unsupported as e:
+                bad[str(e)] += 1
+            except Exception as e:
+                bad[f"{type(e).__name__}: {str(e)[:40]}"] += 1
+        total += len(seen)
+        translated += ok
+        reasons.update(bad)
+        why = ", ".join(f"{k} x{v}" for k, v in bad.most_common(4))
+        print(f"{path.name[:32]:32} {ok:3}/{len(seen):<3} {why}{note}")
+    print(f"\n{translated} of {total} models translate")
+    for k, v in reasons.most_common():
+        print(f"{v:4}  {k}")
+
+
+if __name__ == "__main__":
+    main()
