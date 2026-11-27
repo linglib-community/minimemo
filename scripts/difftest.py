@@ -12,6 +12,7 @@ from fractions import Fraction
 
 import numpy
 from memo import memo
+from memo.lib import Bool
 from memo.core import MemoError
 from memo.core import (EChoice, EFFI, EMemo, EOp, EWith, SChoose, SForAll, SKnows, SShow, SSnapshot,
                        SWith)
@@ -44,6 +45,11 @@ def nodes(x):
 def rat(x) -> str:
     q = Fraction(float(x))
     return str(q.numerator) if q.denominator == 1 else f"({q.numerator} / {q.denominator})"
+
+
+def bars(names) -> str:
+    """The constructors of an inductive type that may have none."""
+    return "".join(f" | {name}" for name in names)
 
 
 def flt(x) -> str:
@@ -112,7 +118,11 @@ def source(raw, env, args_of, shown=None):
                 for slot, arg in zip(slots, n.args):
                     slot |= domain_of[choice_name(arg)]
     domains = sorted({d for ds in domain_of.values() for d in ds})
+    env = {"Bool": Bool} | dict(env)  # memo's own domain of the two truth values
     values = {d: [number(v) for v in env[d]] for d in domains}
+    # a table has an entry for each joint value of its choices, so large domains are not run
+    if any(len(vs) > 64 for vs in values.values()):
+        raise Unsupported("a domain with more than 64 values")
     for name, slots in calls.items():
         point = [values[sorted(slot)[0]][0] for slot in slots]
         if numpy.asarray(env[name](*point)).dtype == bool:
@@ -129,11 +139,11 @@ def source(raw, env, args_of, shown=None):
         fns.append(f"  | {ident(name + '_ref')}{f' ({ps} : ℚ)' if ps else ''} : Fn {len(axes_of(name))}")
     lean = ["import Minimemo", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
-            f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq, Repr",
-            f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq, Repr",
-            f"inductive Dom | {' | '.join(domains)} deriving DecidableEq",
+            f"inductive Agent{bars(map(ident, agents))} deriving DecidableEq, Repr",
+            f"inductive Name{bars(map(ident, names))} deriving DecidableEq, Repr",
+            f"inductive Dom{bars(domains)} deriving DecidableEq",
             "inductive Fn : ℕ → Type", *fns, "",
-            f"def dom : Dom → Domain {K}"]
+            f"def dom : Dom → Domain {K}" + ("" if domains else " := fun d ↦ nomatch d")]
     for d in domains:
         vs = ", ".join(num(v) for v in values[d])
         lean.append(f"  | .{d} => ⟨{len(values[d])}, fun j ↦ ([{vs}] : List {K}).getD j 0⟩")
@@ -141,12 +151,13 @@ def source(raw, env, args_of, shown=None):
     for name, slots in calls.items():
         f = env[name]
         columns = [sorted({v for d in slot for v in values[d]}) for slot in slots]
-        if numpy.prod([len(c) for c in columns]) > 20000:
+        if numpy.prod([len(c) for c in columns]) > 4096:
             raise Unsupported("a function with too many values to list")
         points = itertools.product(*columns)
         rows = ", ".join(f"([{', '.join(num(v) for v in p)}], {num(number(f(*p)))})" for p in points)
         args = " ".join(f"a{i}" for i in range(len(slots)))
-        lean += [f"def {ident(name)} ({args} : {K}) : {K} :=",
+        binder = f" ({args} : {K})" if slots else ""
+        lean += [f"def {ident(name)}{binder} : {K} :=",
                  f"  (List.lookup [{', '.join(args.split())}] "
                  f"([{rows}] : List (List {K} × {K}))).getD 0", ""]
     lean += [model(f) for f in raw]

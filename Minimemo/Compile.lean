@@ -102,7 +102,8 @@ def own (S : Scope A N D) (xs : List (N × D)) (n : ℕ) : Scope A N D :=
 def erase (S : Scope A N D) (as : List (Ref A × N)) : Scope A N D :=
   { S with entries := S.entries.filter fun p ↦ p.1 ∉ as }
 
-/-- The scope of the agent `α` in a scope, or the empty scope, whose belief is the table `0`. -/
+/-- The scope of the agent `α` in a scope. An agent of whom nothing was said has the empty scope,
+whose belief is the table `0`. -/
 def agent (S : Scope A N D) (α : A) : Scope A N D :=
   (S.agents α).getD ⟨0, [], fun _ ↦ none, []⟩
 
@@ -117,8 +118,6 @@ end Scope
 
 /-- Why a model is not accepted. -/
 inductive Error (A N : Type u) : Type u
-  /-- An agent is asked or observes before anything was said of it. -/
-  | unknownAgent (α : A)
   /-- A choice is used that the mind does not have. -/
   | unknownChoice (γ : Ref A) (x : N)
   /-- The agent `α` chooses `x`, which it has already chosen. -/
@@ -205,7 +204,7 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) :
     (orError (S.entries.lookup (.self, x)) (.unknownChoice .self x)).map fun c ↦
       (.val c.index c.dom, [c.index])
   | .query α e => do
-    let Sα ← orError (S.agents α) (.unknownAgent α)
+    let Sα := S.agent α
     let (t, deps) ← Expr.term e Sα g
     if deps.all (· ∈ Sα.certain) then pure (.rename Sα.links t, (deps.map Sα.link).dedup)
     else .error (.uncertainQuery α)
@@ -243,10 +242,9 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     choose S g α xs id (Expr.doms e).length
       (Expr.term e ((S.agent α).own xs g.next) { g with next := g.next + xs.length })
   | .observes α β x γ y => do
-    let Sα ← orError (S.agents α) (.unknownAgent α)
+    let Sα := S.agent α
     let c ← orError (S.entries.lookup (γ, y)) (.unknownChoice γ y)
     let cα ← orError (Sα.entries.lookup (.agent β, x)) (.unknownChoice (.agent β) x)
-    let _ ← orError (Sα.agents β) (.unknownAgent β)
     if c.dom ≠ cα.dom then .error (.domainMismatch β x)
     else if cα.certain then .error (.alreadyCertain α β x)
     else
@@ -280,7 +278,7 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
         else S) Sα
     .ok (S.setAgent α (Sα'.setAgent β Sβ), g)
   | .forgets α xs => do
-    let Sα ← orError (S.agents α) (.unknownAgent α)
+    let Sα := S.agent α
     match xs.find? fun x ↦ !((Sα.entries.lookup (.self, x)).any (!·.given) &&
         (S.entries.lookup (.agent α, x)).isSome) with
     | some x => .error (.cannotForget α x)

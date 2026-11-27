@@ -29,8 +29,11 @@ jobs:
             python scripts/fuzz.py $seed 25
             python scripts/difftest.py fuzz_models -v
           done
-      - name: report on memo's demos
+      - name: run memo's own tests
         run: |
           pip install matplotlib pandas seaborn tqdm ipython scipy
           git clone --depth 1 https://github.com/kach/memo memo-src
+          python scripts/memotests.py "$PWD/memo-src/demo/test.py"
+      - name: report on memo's demos
+        run: |
           python scripts/demos.py "$PWD/memo-src/demo"

@@ -58,11 +58,11 @@ def unknown : Model Agent Name Dom Fn :=
 
 example : Model.error unknown = some (.unknownChoice .self .z) := by decide +kernel
 
-/-- An agent of whom nothing was said cannot be asked. -/
+/-- An agent of whom nothing was said can be asked: its mind is empty. -/
 def stranger : Model Agent Name Dom Fn :=
   { model with ret := .query .b (.lit 1) }
 
-example : Model.error stranger = some (.unknownAgent .b) := by decide +kernel
+example : Model.error stranger = none := by decide +kernel
 
 /-- A model cannot return a value that depends on an agent's choice. -/
 def leaks : Model Agent Name Dom Fn :=
