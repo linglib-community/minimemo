@@ -96,7 +96,15 @@ def main() -> int:
     for d in domains:
         vs = ", ".join(rat(v) for v in values[d])
         lean.append(f"  | .{d} => ⟨{len(values[d])}, fun j ↦ ([{vs}] : List ℚ).getD j 0⟩")
-    lean += ["", "def eq (a b : ℚ) : ℚ := if a = b then 1 else 0", ""]
+    lean += ["", "def eq (a b : ℚ) : ℚ := if a = b then 1 else 0",
+             "def ne (a b : ℚ) : ℚ := if a = b then 0 else 1",
+             "def lt (a b : ℚ) : ℚ := if a < b then 1 else 0",
+             "def le (a b : ℚ) : ℚ := if a ≤ b then 1 else 0",
+             "def gt (a b : ℚ) : ℚ := if a > b then 1 else 0",
+             "def ge (a b : ℚ) : ℚ := if a ≥ b then 1 else 0",
+             "def both (a b : ℚ) : ℚ := if a ≠ 0 ∧ b ≠ 0 then 1 else 0",
+             "def either (a b : ℚ) : ℚ := if a ≠ 0 ∨ b ≠ 0 then 1 else 0",
+             "def cond3 (c a b : ℚ) : ℚ := if c ≠ 0 then a else b", ""]
     for name, slots in calls.items():
         f = getattr(examples, name)
         points = itertools.product(*[sorted({v for d in slot for v in values[d]}) for slot in slots])
@@ -110,9 +118,16 @@ def main() -> int:
         if f.__name__ in referenced:
             k = sum(isinstance(s, SForAll) for s in parsed[f.__name__][1])
             args = " ".join(f"a{i}" for i in range(k))
-            lean += [f"def {ident(f.__name__ + '_ref')} ({args} : ℚ) : ℚ :=",
-                     f"  Model.ref dom {ident(f.__name__)} [{', '.join(args.split())}]", ""]
-    lean += [f"#eval Model.entries dom {ident(f.__name__)}" for f in raw]
+            ps = " ".join(map(ident, parsed[f.__name__][0].static_parameters))
+            binder = f" ({ps} {args} : ℚ)" if ps else f" ({args} : ℚ)"
+            m = f"({ident(f.__name__)} {ps})" if ps else ident(f.__name__)
+            lean += [f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
+                     f"  Model.ref dom {m} [{', '.join(args.split())}]", ""]
+    args_of = getattr(examples, "ARGS", {})
+    for f in raw:
+        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
+        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
+        lean.append(f"#eval Model.entries dom {m}")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
 
@@ -120,7 +135,7 @@ def main() -> int:
     if run.returncode != 0:
         print(run.stdout + run.stderr)
         return 1
-    results = re.findall(r"some \[(.*?)\]|(none)", run.stdout, re.S)
+    results = re.findall(r"some\s*\[(.*?)\]|(none)", run.stdout, re.S)
 
     scope = vars(examples)
     scope["memo"] = memo
@@ -130,7 +145,8 @@ def main() -> int:
         exec(f"{f.__name__} = memo({f.__name__})", scope)
         compiled = scope[f.__name__]
         sizes = [len(values[s.domain]) for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
-        want = numpy.broadcast_to(numpy.asarray(compiled()), sizes).ravel()
+        out = compiled(*args_of.get(f.__name__, ()))
+        want = numpy.broadcast_to(numpy.asarray(out), sizes).ravel()
         if none:
             ok = False
         else:

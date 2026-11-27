@@ -12,7 +12,10 @@ from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith
                        SForAll, SKnows, SShow, SWith)
 from memo.parse import parse_memo
 
-BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq"}
+BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq",
+          Op.NEQ: "ne", Op.LT: "lt", Op.LTE: "le", Op.GT: "gt", Op.GTE: "ge", Op.AND: "both",
+          Op.OR: "either", Op.POW: "rpow"}
+UNARY = {Op.EXP: "exp", Op.LOG: "log", Op.NEG: "(- ·)", Op.ABS: "(|·|)", Op.UADD: "id"}
 
 
 class Unsupported(Exception):
@@ -30,6 +33,8 @@ def ident(name: str) -> str:
 
 
 def lit(value) -> str:
+    if isinstance(value, str):
+        return f".lit {ident(value)}"
     q = Fraction(value)
     return f".lit {q.numerator}" if q.denominator == 1 and q >= 0 else f".lit ({q})"
 
@@ -41,9 +46,9 @@ def choice(who: str, name: str) -> str:
 
 def call(name: str, args: list[str]) -> str:
     if len(args) in (1, 2):
-        return f".op{'₁₂'[len(args) - 1]} {ident(name)} " + " ".join(f"({a})" for a in args)
+        return f".op{'₁₂'[len(args) - 1]} {name} " + " ".join(f"({a})" for a in args)
     applied = " ".join(f"(v {i})" for i in range(len(args)))
-    return f".op (fun v ↦ {ident(name)} {applied}) ![{', '.join(args)}]"
+    return f".op (fun v ↦ {name} {applied}) ![{', '.join(args)}]"
 
 
 def expr(e) -> str:
@@ -56,12 +61,22 @@ def expr(e) -> str:
             return f".query .{ident(who)} ({expr(inner)})"
         case EExpect(expr=inner, reduction="expectation"):
             return f".expect ({expr(inner)})"
+        case EOp(op=Op.POW, args=[a, ELit(value=int(n))]) if n >= 0:
+            return f".op₁ (· ^ {n}) ({expr(a)})"
+        case EOp(op=op, args=[a]) if op in UNARY:
+            return f".op₁ {UNARY[op]} ({expr(a)})"
+        case EOp(op=Op.ITE, args=[c, a, b]):
+            return f".op (fun v ↦ cond3 (v 0) (v 1) (v 2)) ![{expr(c)}, {expr(a)}, {expr(b)}]"
         case EOp(op=op, args=[a, b]) if op in BINARY:
             return f".op₂ {BINARY[op]} ({expr(a)}) ({expr(b)})"
         case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
-            return call(name, [expr(a) for a in args])
-        case EMemo(name=name, args=[], ids=ids, kwargs=kwargs) if not kwargs:
-            return call(name + "_ref", [choice(who, c) for (_, who, c) in ids])
+            return call(ident(name), [expr(a) for a in args])
+        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs) if not kwargs:
+            given = "".join(f" {lit(a.value)[5:]}" for a in args if isinstance(a, ELit))
+            if given.count(" ") != len(args):
+                raise Unsupported("a model reference whose arguments are not parameters or numbers")
+            head = ident(name + "_ref") + given
+            return call(f"({head})" if given else head, [choice(who, c) for (_, who, c) in ids])
         case EImagine(do=do, then=then):
             return f".imagine ({stmts(do)}) ({expr(then)})"
     raise Unsupported(type(e).__name__)
@@ -104,10 +119,12 @@ def stmts(ss) -> str:
 
 
 def model(f, name: str | None = None) -> str:
-    _, ss, rets = parse_memo(f)
+    pctxt, ss, rets = parse_memo(f)
+    params = " ".join(map(ident, pctxt.static_parameters))
+    binder = f" ({params} : ℚ)" if params else ""
     if len(rets) != 1:
         raise Unsupported("a model with several return values")
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
-    return (f"def {ident(name or f.__name__)} : Model Agent Name Dom ℚ where\n"
+    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom ℚ where\n"
             f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(rets[0])}\n")

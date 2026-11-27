@@ -88,8 +88,28 @@ def knows_other[u: U, r: R]():
     return Pr[listener.u_guess == u]
 
 
+def weighted[u: U, r: R](w, k):
+    speaker: knows(r)
+    speaker: chooses(u_said in U, wpp=1 + w * denotes(u_said, r))
+    return k * Pr[speaker.u_said == u] ** 2
+
+
+def tempered[u: U, r: R](w):
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=weighted[u_said, r_true](w, 1))
+    ]
+    listener: observes [speaker.u_said] is u
+    listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick] ** 3)
+    return Pr[listener.r_pick == r]
+
+
 # A model comes after the models that it refers to.
-MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other]
+MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
+          weighted, tempered]
+
+# Parameter values for the comparison with memo.
+ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}
 
 if __name__ == "__main__":
     for f in MODELS:
