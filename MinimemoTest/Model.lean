@@ -1,6 +1,6 @@
 module
 
-import Minimemo.Model
+import Minimemo.Family
 import Mathlib.Algebra.Order.Field.Rat
 
 open Memo
@@ -71,22 +71,24 @@ def leaks : Model Agent Name Dom Fn :=
 example : Model.error leaks = some .uncertainReturn := by decide +kernel
 
 /-- A reference to the model one depth below, and to the one two below. -/
-inductive Back : ℕ → Type
-  | one : Back 0
-  | two : Back 0
+inductive Back
+  | one | two
 
-/-- A model with one axis that returns the sum of the two models before it, or one. -/
-def fib (n : ℕ) : Model Agent Name Dom Back where
-  axes := [(.x, .X)]
-  body := .pass
-  ret := if n < 2 then .lit 1 else .prim .add ![.call .one ![], .call .two ![]]
+/-- A family of models with one axis, in which a member returns the sum of the two members before
+it, or one. -/
+def fib : Family Agent Name Dom Fn ℕ Back where
+  model n :=
+    { axes := [(.x, .X)]
+      body := .pass
+      ret := if n < 2 then .lit 1
+        else .prim .add ![.ref .one ![.choice .x], .ref .two ![.choice .x]] }
+  target
+    | n, .one => n - 1
+    | n, .two => n - 2
 
-/-- A reference reads the first entry of the array one or two depths below. -/
-def back (ts : List (List ℚ)) : {k : ℕ} → Back k → (Fin k → ℚ) → ℚ
-  | _, .one, _ => ((ts.reverse.getD 0 []).getD 0 0)
-  | _, .two, _ => ((ts.reverse.getD 1 []).getD 0 0)
-
-example : Model.level (K := ℚ) (fun _ ↦ ⟨3, fun j ↦ j⟩) back fib 10 = [89, 89, 89] := by
+example :
+    fib.entries (K := ℚ) .ofField (fun _ ↦ ⟨3, fun j ↦ j⟩) (fun f _ ↦ nomatch f) 7 6 =
+      [13, 13, 13] := by
   decide +kernel
 
 end MinimemoTest

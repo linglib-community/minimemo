@@ -109,7 +109,7 @@ def prim(name: str, args: list[str]) -> str:
 
 def call(name: str, args: list[str]) -> str:
     """An outside function applied to expressions."""
-    return f".call (.{name}) ![{', '.join(args)}]"
+    return f".fn (.{name}) ![{', '.join(args)}]"
 
 
 def expr(e) -> str:
@@ -148,8 +148,8 @@ def expr(e) -> str:
         case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
             return call(ident(name), [expr(a) for a in args])
         case EMemo(name=name, args=args, ids=ids, kwargs=kwargs) if not kwargs:
-            head = ident(name + "_ref") + "".join(f" {static(a)}" for a in args)
-            return call(head, [choice(who, c) for (_, who, c) in ids])
+            head = ident(name) + "".join(f" {static(a)}" for a in args)
+            return f".ref (.{head}) ![{', '.join(choice(who, c) for (_, who, c) in ids)}]"
         case EImagine(do=do, then=then):
             return f".imagine ({stmts(do)}) ({expr(then)})"
     raise Unsupported(type(e).__name__)
@@ -212,5 +212,5 @@ def model(f, name: str | None = None) -> str:
         raise Unsupported("a model with several return values")
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
-    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom Fn where\n"
+    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"
             f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(rets[0])}\n")

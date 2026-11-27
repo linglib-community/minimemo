@@ -247,7 +247,7 @@ def arrayOf (p : K) : List K := [p, 1 - p, 0, 0, 0, 1, 1, 0, 0, 0, 1 - p, p]
 the referent by `g` of the probability that a listener with the array `l` gives the referent on
 hearing it. -/
 def weight (g : K → K) (l : List K) (u r : ℕ) : K := denotesOf (u : K) (r : K) *
-  g (Model.lookup [domOf K .U, domOf K .R] l fun i ↦ if i = 0 then (u : K) else r)
+  g (Model.lookup [domOf K .U, domOf K .R] l fun i ↦ if h : i < 2 then ![(u : K), r] ⟨i, h⟩ else 0)
 
 theorem getD_find?_range (n u : ℕ) (h : u < n) :
     ((List.range n).find? fun j : ℕ ↦ (j : K) == (u : K)).getD 0 = u := by

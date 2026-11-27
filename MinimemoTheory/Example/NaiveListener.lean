@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Model
+public import Minimemo.Family
 public import Mathlib.Algebra.Order.Field.Rat
 public import Mathlib.Algebra.Field.Defs
 

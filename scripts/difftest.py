@@ -26,6 +26,7 @@ from memo2lean import Unsupported, ident, model
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "scratch" / "difftest.lean"
+DEPTH = 64  # how deep references between models are followed
 
 
 def nodes(x):
@@ -131,18 +132,23 @@ def source(raw, env, args_of, shown=None):
     def axes_of(name):
         return [s.domain for s in parsed[name][1] if isinstance(s, SForAll)]
 
-    # the outside functions: those of the models, and a reference to each model that is referenced
+    def applied(name, ps):
+        return f"{ident(name)} {' '.join(ps)}" if ps else ident(name)
+
+    def params(name):
+        return list(map(ident, parsed[name][0].static_parameters))
+
+    # the outside functions of the models, and an index for each model with its parameters
     fns = [f"  | {ident(name)} : Fn {len(slots)}" for name, slots in calls.items()]
     fns += [f"  | {name} : Fn {2 if name == 'rpow' else 1}" for name in outside]
-    for name in referenced:
-        ps = " ".join(map(ident, parsed[name][0].static_parameters))
-        fns.append(f"  | {ident(name + '_ref')}{f' ({ps} : ℚ)' if ps else ''} : Fn {len(axes_of(name))}")
+    indices = [f"  | {ident(name)}{''.join(f' ({p} : ℚ)' for p in params(name))}" for name in parsed]
     lean = ["import Minimemo", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent{bars(map(ident, agents))} deriving DecidableEq, Repr",
             f"inductive Name{bars(map(ident, names))} deriving DecidableEq, Repr",
             f"inductive Dom{bars(domains)} deriving DecidableEq",
-            "inductive Fn : ℕ → Type", *fns, "",
+            "inductive Fn : ℕ → Type", *fns,
+            "inductive Ix", *indices, "  deriving DecidableEq", "",
             f"def dom : Dom → Domain {K}" + ("" if domains else " := fun d ↦ nomatch d")]
     for d in domains:
         vs = ", ".join(num(v) for v in values[d])
@@ -161,37 +167,28 @@ def source(raw, env, args_of, shown=None):
                  f"  (List.lookup [{', '.join(args.split())}] "
                  f"([{rows}] : List (List {K} × {K}))).getD 0", ""]
     lean += [model(f) for f in raw]
-    # the meaning of the outside functions. A reference to a model reads the array of that model,
-    # which is computed once for each place where the reference stands. A model may refer to
-    # itself with other parameters, as in memo, so the meaning is defined by recursion.
-    interp = ".ofFloat" if outside else ".ofField"
-    if calls or referenced or outside:
-        lean.append(f"partial def call : {{k : ℕ}} → Fn k → (Fin k → {K}) → {K}")
+    of = ".ofFloat" if outside else ".ofField"
+    if calls or outside:
+        lean.append(f"def call : {{k : ℕ}} → Fn k → (Fin k → {K}) → {K}")
         lean += [f"  | _, .{name} => Exp.float .{name}" for name in outside]
         for name, slots in calls.items():
-            applied = " ".join(f"(v {i})" for i in range(len(slots)))
-            lean.append(f"  | _, .{ident(name)} => fun v ↦ {ident(name)} {applied}")
-        for name in referenced:
-            ps = " ".join(map(ident, parsed[name][0].static_parameters))
-            m = f"({ident(name)} {ps})" if ps else ident(name)
-            at = "0"
-            for i, d in enumerate(axes_of(name)):
-                at = f"({at}) * {len(values[d])} + (dom .{d}).index (v {i})"
-            lean += [f"  | _, .{ident(name + '_ref')}{' ' + ps if ps else ''} =>",
-                     f"    let table := ((Model.entries ({interp} dom call) {m}).getD []).toArray",
-                     f"    fun v ↦ table.getD ({at}) 0"]
+            args = " ".join(f"(v {i})" for i in range(len(slots)))
+            lean.append(f"  | _, .{ident(name)} => fun v ↦ {ident(name)} {args}")
     else:
         lean.append(f"def call : {{k : ℕ}} → Fn k → (Fin k → {K}) → {K} := fun f _ ↦ nomatch f")
-    lean += ["", f"def interp : Interp Dom Fn {K} := {interp} dom call", ""]
+    # the models are a family in which a reference names a model with its parameters, as in memo
+    lean += ["", "def fam : Family Agent Name Dom Fn Ix Ix where", "  model"]
+    lean += [f"    | .{applied(name, params(name))} => {applied(name, params(name))}" for name in parsed]
+    lean += ["  target _ r := r", "",
+             f"def interp (p : Ix) : Interp Dom (Refs Ix Fn) {K} :=",
+             f"  {of} dom (fam.call dom call (fam.entries {of} dom call {DEPTH}) p)", ""]
+    given = {f.__name__: [rat(a) for a in args_of.get(f.__name__, ())] for f in shown}
     for f in shown:
-        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
-        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
-        lean.append(f"#eval Model.entries interp {m}")
+        m = applied(f.__name__, given[f.__name__])
+        lean.append(f"#eval Model.entries (interp (.{m})) ({m})")
     lean.append('#eval "errors"')
     for f in shown:  # why each model is not accepted, if it is not
-        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
-        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
-        lean.append(f"#eval Model.error {m}")
+        lean.append(f"#eval Model.error ({applied(f.__name__, given[f.__name__])})")
     sizes = {f.__name__: [len(values[d]) for d in axes_of(f.__name__)] for f in shown}
     return "\n".join(lean) + "\n", sizes
 

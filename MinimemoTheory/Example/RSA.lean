@@ -29,6 +29,7 @@ likely. One more depth of reasoning takes the probability `p` of the green squar
 
 * `Memo.RSA.model t`: the listener at depth `t`, as a memo program that refers to the listener
   below.
+* `Memo.RSA.family`: the listeners at every depth, as a family of models.
 * `Memo.RSA.level β t`: the array of the listener at depth `t`, with real numbers.
 * `Memo.RSA.prob β t`: the probability that the recursion gives the green square at depth `t`.
 
@@ -64,11 +65,9 @@ namespace Memo.RSA
 open NaiveListener (Agent Name Dom domOf denotesOf)
 open Listener (arrayOf)
 
-/-- The outside functions of the model: the denotation, the listener one depth below, the
-exponential, and the parameter `β`. -/
+/-- The outside functions of the model: the denotation, the exponential, and the parameter `β`. -/
 inductive Fn : ℕ → Type
   | denotes : Fn 2
-  | below : Fn 2
   | exp : Fn 1
   | beta : Fn 0
   deriving DecidableEq
@@ -84,35 +83,38 @@ inductive Fn : ℕ → Type
   listener: chooses(r in R, wpp=Pr[speaker.r == r])
   return Pr[listener.r == r]
 ```
--/
-def model (t : ℕ) : Model Agent Name Dom Fn where
+It has one reference, to the listener below. -/
+def model (t : ℕ) : Model Agent Name Dom (Refs Unit Fn) where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .thinks .listener
       (.chooses .speaker .rTrue .R (.lit 1) ;;
        .chooses .speaker .uSaid .U
-        (.prim .mul ![.call .denotes ![.choice .uSaid, .choice .rTrue],
+        (.prim .mul ![.fn .denotes ![.choice .uSaid, .choice .rTrue],
           if t = 0 then .lit 1
-          else .call .exp ![.prim .mul ![.call .beta ![],
-            .call .below ![.choice .uSaid, .choice .rTrue]]]])) ;;
+          else .fn .exp ![.prim .mul ![.fn .beta ![],
+            .ref () ![.choice .uSaid, .choice .rTrue]]]])) ;;
     .observes .listener .speaker .uSaid .self .u ;;
     .chooses .listener .rPick .R
       (.expect (.prim .eq ![.query .speaker (.choice .rTrue), .choice .rPick]))
   ret := .expect (.prim .eq ![.query .listener (.choice .rPick), .choice .r])
 
-/-- The meaning of the outside functions in the real numbers, for the parameter `β`, when `ts`
-holds the arrays of the listeners at the depths below: the listener one depth below is the last of
-them. -/
-noncomputable def callOf (β : ℝ) (ts : List (List ℝ)) : {k : ℕ} → Fn k → (Fin k → ℝ) → ℝ
+/-- The listeners at every depth: the reference of the listener at depth `t` names the listener at
+depth `t - 1`. -/
+def family : Family Agent Name Dom Fn ℕ Unit where
+  model := model
+  target t _ := t - 1
+
+/-- The meaning of the outside functions in the real numbers, for the parameter `β`. -/
+noncomputable def callOf (β : ℝ) : {k : ℕ} → Fn k → (Fin k → ℝ) → ℝ
   | _, .denotes, v => denotesOf (v 0) (v 1)
-  | _, .below, v =>
-    Model.lookup [domOf ℝ .U, domOf ℝ .R] (ts.getLast?.getD []) fun i ↦ if i = 0 then v 0 else v 1
   | _, .exp, v => Real.exp (v 0)
   | _, .beta, _ => β
 
 /-- The array of the listener at depth `t`, with real numbers: one entry for each utterance and
 referent, in row-major order. -/
-noncomputable def level (β : ℝ) (t : ℕ) : List ℝ := Model.level (domOf ℝ) (callOf β) model t
+noncomputable def level (β : ℝ) (t : ℕ) : List ℝ :=
+  family.entries .ofField (domOf ℝ) (callOf β) (t + 1) t
 
 /-- The probability that the recursion gives the green square on hearing *green*, at depth `t`. -/
 noncomputable def prob (β : ℝ) : ℕ → ℝ
@@ -122,15 +124,15 @@ noncomputable def prob (β : ℝ) : ℕ → ℝ
 section Step
 
 /-- The term for the weight of the utterance at depth zero: the denotation. -/
-def weightTerm₀ : Term Dom Fn :=
-  .rename [] (.op (.inl .mul) ![.op (.inr .denotes) ![.val 3 .U, .val 2 .R], .lit 1])
+def weightTerm₀ : Term Dom (Refs Unit Fn) :=
+  .rename [] (.op (.inl .mul) ![.op (.inr (.inr .denotes)) ![.val 3 .U, .val 2 .R], .lit 1])
 
 /-- The term for the weight of the utterance at a depth above zero: the denotation times the
 exponential of `β` times the probability that the listener below gives the referent. -/
-def weightTerm : Term Dom Fn :=
-  .rename [] (.op (.inl .mul) ![.op (.inr .denotes) ![.val 3 .U, .val 2 .R],
-    .op (.inr .exp) ![.op (.inl .mul) ![.op (.inr .beta) ![],
-      .op (.inr .below) ![.val 3 .U, .val 2 .R]]]])
+def weightTerm : Term Dom (Refs Unit Fn) :=
+  .rename [] (.op (.inl .mul) ![.op (.inr (.inr .denotes)) ![.val 3 .U, .val 2 .R],
+    .op (.inr (.inr .exp)) ![.op (.inl .mul) ![.op (.inr (.inr .beta)) ![],
+      .op (.inr (.inl ())) ![.val 3 .U, .val 2 .R]]]])
 
 theorem program_zero : Model.program (model 0) = .ok (Listener.program weightTerm₀) := by
   program_rfl
@@ -138,12 +140,15 @@ theorem program_zero : Model.program (model 0) = .ok (Listener.program weightTer
 theorem program_one : Model.program (model 1) = .ok (Listener.program weightTerm) := by
   program_rfl
 
+theorem model_succ (t : ℕ) : model (t + 1) = model 1 := by
+  simp [model]
+
 /-- The listener at depth zero gives the green square the probability one half on hearing
 *green*. -/
-theorem entries_zero (β : ℝ) (ts : List (List ℝ)) :
-    Model.entries (.ofField (domOf ℝ) (callOf β ts)) (model 0) = some (arrayOf (1 / 2)) := by
+theorem level_zero (β : ℝ) : level β 0 = arrayOf (1 / 2) := by
+  show (Model.entries _ (model 0)).getD [] = _
   rw [Model.entries, program_zero]
-  show some ((Listener.program weightTerm₀).entries _) = _
+  show (Listener.program weightTerm₀).entries _ = _
   rw [Listener.entries_program (w := Listener.weight (fun _ ↦ 1) (arrayOf 0)) fun σ ↦ by
       show _ * ((1 : ℚ) : ℝ) = _ * 1
       rw [Rat.cast_one]
@@ -151,36 +156,35 @@ theorem entries_zero (β : ℝ) (ts : List (List ℝ)) :
     Listener.listener_weight (fun _ ↦ 1) 0 one_pos one_pos one_pos]
   norm_num
 
-/-- **The step from one depth to the next**: over a listener with the array `arrayOf p`, the model
-at a depth above zero has the array of the probability
+/-- **The step from one depth to the next**: over a listener with the array `arrayOf p`, the
+listener at the next depth has the array of the probability
 `2 * exp (β * p) / (3 * exp (β * p) + exp β)`. -/
-theorem entries_one (β p : ℝ) :
-    Model.entries (.ofField (domOf ℝ) (callOf β [arrayOf p])) (model 1) =
+theorem entries_model (β : ℝ) (below : ℕ → List ℝ) (t : ℕ) (p : ℝ) (h : below t = arrayOf p) :
+    Model.entries (.ofField (domOf ℝ) (family.call (domOf ℝ) (callOf β) below (t + 1)))
+      (model (t + 1)) =
       some (arrayOf (2 * Real.exp (β * p) / (3 * Real.exp (β * p) + Real.exp (β * 1)))) := by
-  rw [Model.entries, program_one]
+  rw [model_succ, Model.entries, program_one]
   show some ((Listener.program weightTerm).entries _) = _
-  rw [Listener.entries_program (w := Listener.weight (fun x ↦ Real.exp (β * x)) (arrayOf p))
-      fun σ ↦ rfl,
+  rw [Listener.entries_program (w := Listener.weight (fun x ↦ Real.exp (β * x)) (below t))
+      fun σ ↦ rfl, h,
     Listener.listener_weight (fun x ↦ Real.exp (β * x)) p (Real.exp_pos _) (Real.exp_pos _)
       (Real.exp_pos _)]
 
-theorem callOf_getLast (β : ℝ) (ts : List (List ℝ)) :
-    @callOf β ts = @callOf β [ts.getLast?.getD []] := by
-  funext k f v
-  cases f <;> rfl
+theorem refs_one : (model 1).refs = [()] := by decide
 
-theorem model_succ (t : ℕ) : model (t + 1) = model 1 := by
-  simp [model]
-
-theorem level_zero (β : ℝ) : level β 0 = arrayOf (1 / 2) := by
-  rw [level, Model.level, Model.levels, List.getLast?_concat, Option.getD_some, entries_zero,
-    Option.getD_some]
-
+/-- The array at a depth above zero is the array of the model over the array one depth below. -/
 theorem level_succ (β : ℝ) (t : ℕ) :
-    level β (t + 1) =
-      (Model.entries (.ofField (domOf ℝ) (callOf β [level β t])) (model 1)).getD [] := by
-  rw [level, Model.level, Model.levels, List.getLast?_concat, Option.getD_some, callOf_getLast,
-    model_succ]
+    level β (t + 1) = (Model.entries (.ofField (domOf ℝ)
+      (family.call (domOf ℝ) (callOf β) (fun q ↦ if q = t then level β t else []) (t + 1)))
+      (model (t + 1))).getD [] := by
+  have hb : (fun q ↦ (((model (t + 1)).refs.map fun r ↦ (family.target (t + 1) r,
+      family.entries .ofField (domOf ℝ) (callOf β) (t + 1) (family.target (t + 1) r))).lookup
+        q).getD []) = fun q ↦ if q = t then level β t else [] := by
+    funext q
+    rw [model_succ, refs_one]
+    have hq : (q == t) = decide (q = t) := rfl
+    by_cases h : q = t <;> simp [List.lookup, family, level, hq, h]
+  rw [← hb]
   rfl
 
 end Step
@@ -189,7 +193,8 @@ end Step
 theorem level_eq (β : ℝ) (t : ℕ) : level β t = arrayOf (prob β t) := by
   induction t with
   | zero => exact level_zero β
-  | succ t ih => rw [level_succ, ih, entries_one, Option.getD_some, prob]
+  | succ t ih =>
+    rw [level_succ, entries_model β _ t _ (by simpa using ih), Option.getD_some, prob]
 
 /-- On hearing *green*, the listener at depth `t` gives the green square the probability
 `prob β t`. -/
