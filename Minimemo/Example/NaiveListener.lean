@@ -31,8 +31,8 @@ speakers choose in opposite orders. The listeners return the same array.
 
 ## Main definitions
 
-* `Memo.NaiveListener.modelOf K`: the model, as a memo program with numbers in the field `K`.
-* `Memo.NaiveListener.model`: the model with rational numbers.
+* `Memo.NaiveListener.model`: the model, as a memo program.
+* `Memo.NaiveListener.interpOf K`: the meaning of its domains and functions in a field `K`.
 * `Memo.NaiveListener.utteranceFirst`: the model in which the speaker chooses the utterance first.
 * `Memo.NaiveListener.rows`: the array that the model returns, as a list of rows.
 
@@ -46,7 +46,7 @@ speakers choose in opposite orders. The listeners return the same array.
 ## Implementation notes
 
 The results hold by computation: the numbers are rational, and Lean evaluates the program of the
-model. The model can also be run: `#eval Model.rows dom model` prints the array.
+model. The model can also be run: `#eval Model.rows interp model` prints the array.
 
 The paper writes the weight of an utterance as `1 if denotes(u, r) else 0`; here `denotes` has the
 values one and zero.
@@ -76,14 +76,18 @@ inductive Dom
   | U | R
   deriving DecidableEq
 
+/-- The outside functions of the models: the denotation, and the number of referents that an
+utterance describes. -/
+inductive Fn : ℕ → Type
+  | denotes : Fn 2
+  | count : Fn 1
+  deriving DecidableEq
+
 /-- The utterances are *green*, *pink*, *square* and *round*, with the values 0 to 3. The
 referents are a green square, a green circle and a pink circle, with the values 0 to 2. -/
 def domOf (K : Type) [Field K] : Dom → Domain K
   | .U => ⟨4, fun j ↦ j⟩
   | .R => ⟨3, fun j ↦ j⟩
-
-/-- The domains with rational numbers. -/
-abbrev dom : Dom → Domain ℚ := domOf ℚ
 
 /-- The **denotation** has the value one when the utterance `u` describes the referent `r`, and
 zero otherwise. -/
@@ -91,14 +95,30 @@ def denotesOf {K : Type} [Field K] [LinearOrder K] (u r : K) : K :=
   if (u = 0 ∧ (r = 0 ∨ r = 1)) ∨ (u = 1 ∧ r = 2) ∨ (u = 2 ∧ r = 0) ∨ (u = 3 ∧ (r = 1 ∨ r = 2))
   then 1 else 0
 
+/-- The number of referents that the utterance `u` describes. -/
+def countOf {K : Type} [Field K] [LinearOrder K] (u : K) : K :=
+  denotesOf u 0 + denotesOf u 1 + denotesOf u 2
+
+/-- The meaning of the outside functions in an ordered field. -/
+def callOf (K : Type) [Field K] [LinearOrder K] : {k : ℕ} → Fn k → (Fin k → K) → K
+  | _, .denotes, v => denotesOf (v 0) (v 1)
+  | _, .count, v => countOf (v 0)
+
+/-- The interpretation of the models in an ordered field. -/
+def interpOf (K : Type) [Field K] [LinearOrder K] : Interp Dom Fn K :=
+  .ofField (domOf K) (callOf K)
+
+/-- The interpretation with rational numbers, which Lean evaluates. -/
+abbrev interp : Interp Dom Fn ℚ := interpOf ℚ
+
+/-- The domains with rational numbers. -/
+abbrev dom : Dom → Domain ℚ := domOf ℚ
+
 /-- The denotation with rational numbers. -/
 abbrev denotes (u r : ℚ) : ℚ := denotesOf u r
 
-/-- The operator `==` of memo: one when its arguments are equal, and zero otherwise. -/
-def eqOf {K : Type} [Field K] [LinearOrder K] (a b : K) : K := if a = b then 1 else 0
-
-/-- The operator `==` with rational numbers. -/
-abbrev eq (a b : ℚ) : ℚ := eqOf a b
+/-- The number of referents that an utterance describes, with rational numbers. -/
+abbrev count (u : ℚ) : ℚ := countOf u
 
 /-- The model of the naive listener:
 ```
@@ -111,26 +131,20 @@ abbrev eq (a b : ℚ) : ℚ := eqOf a b
   return Pr[listener.r_pick == r]
 ```
 -/
-def modelOf (K : Type) [Field K] [LinearOrder K] : Model Agent Name Dom K where
+def model : Model Agent Name Dom Fn where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .thinks .listener
       (.chooses .speaker .rTrue .R (.lit 1) ;;
-       .chooses .speaker .uSaid .U (.op₂ denotesOf (.choice .uSaid) (.choice .rTrue))) ;;
+       .chooses .speaker .uSaid .U (.call .denotes ![.choice .uSaid, .choice .rTrue])) ;;
     .observes .listener .speaker .uSaid .self .u ;;
     .chooses .listener .rPick .R
-      (.expect (.op₂ eqOf (.query .speaker (.choice .rTrue)) (.choice .rPick)))
-  ret := .expect (.op₂ eqOf (.query .listener (.choice .rPick)) (.choice .r))
-
-/-- The model with rational numbers, which Lean evaluates. -/
-abbrev model : Model Agent Name Dom ℚ := modelOf ℚ
-
-/-- The number of referents that the utterance `u` describes. -/
-def count (u : ℚ) : ℚ := ∑ t ∈ Finset.range 3, denotes u t
+      (.expect (.prim .eq ![.query .speaker (.choice .rTrue), .choice .rPick]))
+  ret := .expect (.prim .eq ![.query .listener (.choice .rPick), .choice .r])
 
 /-- The array that the model returns, as a list of rows: one for each utterance, with an entry for
 each referent. -/
-def rows : List (List ℚ) := (Model.rows dom model).getD []
+def rows : List (List ℚ) := (Model.rows interp model).getD []
 
 /-- The entries of the array are those that the paper prints for the naive listener: *green* and
 *round* leave two referents equally likely, and *pink* and *square* pick out one. -/
@@ -159,20 +173,20 @@ theorem rows_eq_denotes_div_count :
   return Pr[listener.r_pick == r]
 ```
 -/
-def utteranceFirst : Model Agent Name Dom ℚ where
+def utteranceFirst : Model Agent Name Dom Fn where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .thinks .listener
-      (.chooses .speaker .uSaid .U (.op₁ count (.choice .uSaid)) ;;
-       .chooses .speaker .rTrue .R (.op₂ denotes (.choice .uSaid) (.choice .rTrue))) ;;
+      (.chooses .speaker .uSaid .U (.call .count ![.choice .uSaid]) ;;
+       .chooses .speaker .rTrue .R (.call .denotes ![.choice .uSaid, .choice .rTrue])) ;;
     .observes .listener .speaker .uSaid .self .u ;;
     .chooses .listener .rPick .R
-      (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
-  ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
+      (.expect (.prim .eq ![.query .speaker (.choice .rTrue), .choice .rPick]))
+  ret := .expect (.prim .eq ![.query .listener (.choice .rPick), .choice .r])
 
 /-- The model in which the speaker chooses the utterance first returns the same array as the
 model in which the speaker chooses the referent first. -/
-theorem rows_utteranceFirst : Model.rows dom utteranceFirst = Model.rows dom model := by
+theorem rows_utteranceFirst : Model.rows interp utteranceFirst = Model.rows interp model := by
   decide +kernel
 
 end Memo.NaiveListener

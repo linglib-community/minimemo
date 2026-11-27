@@ -58,7 +58,7 @@ rational and Lean evaluates the model.
 
 namespace Memo.PragmaticListener
 
-open NaiveListener (Agent Name Dom dom denotes eq count)
+open NaiveListener (Agent Name Dom dom denotes count)
 
 /-- The probability that the naive listener gives the referent `r` at the utterance `u`. -/
 def naive (u r : ℚ) : ℚ := denotes u r / count u
@@ -67,6 +67,18 @@ def naive (u r : ℚ) : ℚ := denotes u r / count u
 theorem rows_naive :
     NaiveListener.rows = (List.range 4).map fun u ↦ (List.range 3).map fun r ↦ naive u r :=
   NaiveListener.rows_eq_denotes_div_count
+
+/-- The outside function of the model: the probability that the naive listener gives. -/
+inductive Fn : ℕ → Type
+  | naive : Fn 2
+  deriving DecidableEq
+
+/-- The meaning of the outside function. -/
+def call : {k : ℕ} → Fn k → (Fin k → ℚ) → ℚ
+  | _, .naive, v => naive (v 0) (v 1)
+
+/-- The interpretation of the model with rational numbers. -/
+def interp : Interp Dom Fn ℚ := .ofField dom call
 
 /-- The model of the pragmatic listener:
 ```
@@ -79,20 +91,20 @@ theorem rows_naive :
   return Pr[listener.r_pick == r]
 ```
 where `L` is the model of the naive listener. -/
-def model : Model Agent Name Dom ℚ where
+def model : Model Agent Name Dom Fn where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .thinks .listener
       (.chooses .speaker .rTrue .R (.lit 1) ;;
-       .chooses .speaker .uSaid .U (.op₂ naive (.choice .uSaid) (.choice .rTrue))) ;;
+       .chooses .speaker .uSaid .U (.call .naive ![.choice .uSaid, .choice .rTrue])) ;;
     .observes .listener .speaker .uSaid .self .u ;;
     .chooses .listener .rPick .R
-      (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
-  ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
+      (.expect (.prim .eq ![.query .speaker (.choice .rTrue), .choice .rPick]))
+  ret := .expect (.prim .eq ![.query .listener (.choice .rPick), .choice .r])
 
 /-- The array that the model returns, as a list of rows: one for each utterance, with an entry for
 each referent. -/
-def rows : List (List ℚ) := (Model.rows dom model).getD []
+def rows : List (List ℚ) := (Model.rows interp model).getD []
 
 /-- The array of the pragmatic listener: at *green* it gives the green circle the probability 3/5
 and the green square 2/5, and at *round* it gives the green circle 3/5 and the pink circle 2/5. -/

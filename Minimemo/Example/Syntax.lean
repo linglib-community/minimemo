@@ -26,7 +26,7 @@ This file writes the naive listener in Lean in the syntax of memo, and computes 
 
 namespace Memo.NotationExample
 
-open NaiveListener (Agent Dom dom denotes)
+open NaiveListener (Agent Dom Fn interp)
 
 /-- The names of the choices of the model. The first two are its axes. -/
 inductive Name
@@ -34,7 +34,7 @@ inductive Name
   deriving DecidableEq
 
 /-- The naive listener, as in memo. -/
-def naive : Model Agent Name Dom ℚ := memo% [u : U, r : R]
+def naive : Model Agent Name Dom Fn := memo% [u : U, r : R]
   listener: thinks[
     speaker: chooses(r_true in R, wpp=1),
     speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
@@ -44,7 +44,7 @@ def naive : Model Agent Name Dom ℚ := memo% [u : U, r : R]
   return Pr[listener.r_pick == r]
 
 theorem rows_naive :
-    Model.rows dom naive =
+    Model.rows interp naive =
       some [[1/2, 1/2, 0],
             [0,   0,   1],
             [1,   0,   0],

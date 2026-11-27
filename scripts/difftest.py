@@ -98,25 +98,25 @@ def main() -> int:
         if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
+    def axes_of(name):
+        return [s.domain for s in parsed[name][1] if isinstance(s, SForAll)]
+
+    # the outside functions: those of the models, and a reference to each model that is referenced
+    fns = [f"  | {ident(name)} : Fn {len(slots)}" for name, slots in calls.items()]
+    for name in referenced:
+        ps = " ".join(map(ident, parsed[name][0].static_parameters))
+        fns.append(f"  | {ident(name + '_ref')}{f' ({ps} : ℚ)' if ps else ''} : Fn {len(axes_of(name))}")
     lean = ["import Minimemo.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
-            f"inductive Dom | {' | '.join(domains)} deriving DecidableEq", "",
+            f"inductive Dom | {' | '.join(domains)} deriving DecidableEq",
+            "inductive Fn : ℕ → Type", *fns, "",
             "def dom : Dom → Domain ℚ"]
     for d in domains:
         vs = ", ".join(rat(v) for v in values[d])
         lean.append(f"  | .{d} => ⟨{len(values[d])}, fun j ↦ ([{vs}] : List ℚ).getD j 0⟩")
-    lean += ["", "def eq (a b : ℚ) : ℚ := if a = b then 1 else 0",
-             "def ne (a b : ℚ) : ℚ := if a = b then 0 else 1",
-             "def lt (a b : ℚ) : ℚ := if a < b then 1 else 0",
-             "def le (a b : ℚ) : ℚ := if a ≤ b then 1 else 0",
-             "def gt (a b : ℚ) : ℚ := if a > b then 1 else 0",
-             "def ge (a b : ℚ) : ℚ := if a ≥ b then 1 else 0",
-             "def both (a b : ℚ) : ℚ := if a ≠ 0 ∧ b ≠ 0 then 1 else 0",
-             "def either (a b : ℚ) : ℚ := if a ≠ 0 ∨ b ≠ 0 then 1 else 0",
-             "def cond3 (c a b : ℚ) : ℚ := if c ≠ 0 then a else b",
-             "def truthy (a : ℚ) : ℚ := if a ≠ 0 then 1 else 0", ""]
+    lean.append("")
     for name, slots in calls.items():
         f = getattr(examples, name)
         points = itertools.product(*[sorted({v for d in slot for v in values[d]}) for slot in slots])
@@ -125,31 +125,38 @@ def main() -> int:
         lean += [f"def {ident(name)} ({args} : ℚ) : ℚ :=",
                  f"  (List.lookup [{', '.join(args.split())}] "
                  f"([{rows}] : List (List ℚ × ℚ))).getD 0", ""]
-    for f in raw:
-        lean.append(model(f))
-        if f.__name__ in referenced:
-            k = sum(isinstance(s, SForAll) for s in parsed[f.__name__][1])
-            args = " ".join(f"a{i}" for i in range(k))
-            ps = " ".join(map(ident, parsed[f.__name__][0].static_parameters))
-            binder = f" ({ps} {args} : ℚ)" if ps else f" ({args} : ℚ)"
-            m = f"({ident(f.__name__)} {ps})" if ps else ident(f.__name__)
-            axes = [s.domain for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
-            at = "0"
-            for i, d in enumerate(axes):
-                at = f"({at}) * {len(values[d])} + (dom .{d}).index a{i}"
-            if ps:
-                lean += [f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
-                         f"  ((Model.entries dom {m}).getD []).getD ({at}) 0", ""]
-            else:  # the array is computed once
-                lean += [f"def {ident(f.__name__ + '_table')} : Array ℚ :=",
-                         f"  ((Model.entries dom {m}).getD []).toArray",
-                         f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
-                         f"  {ident(f.__name__ + '_table')}.getD ({at}) 0", ""]
+    lean += [model(f) for f in raw]
+    # the meaning of the outside functions. A reference to a model reads the array of that model,
+    # which is computed with the meaning of the references to the models before it.
+    lean.append("def call0 : {k : ℕ} → Fn k → (Fin k → ℚ) → ℚ")
+    for name, slots in calls.items():
+        applied = " ".join(f"(v {i})" for i in range(len(slots)))
+        lean.append(f"  | _, .{ident(name)}, v => {ident(name)} {applied}")
+    if referenced or not calls:
+        lean.append("  | _, _, _ => 0")
+    lean.append("")
+    last = "call0"
+    for n, f in enumerate(g for g in raw if g.__name__ in referenced):
+        name = f.__name__
+        ps = " ".join(map(ident, parsed[name][0].static_parameters))
+        m = f"({ident(name)} {ps})" if ps else ident(name)
+        at = "0"
+        for i, d in enumerate(axes_of(name)):
+            at = f"({at}) * {len(values[d])} + (dom .{d}).index (v {i})"
+        table = ident(name + "_table")
+        lean += [f"def {table}{f' ({ps} : ℚ)' if ps else ''} : Array ℚ :=",
+                 f"  ((Model.entries (.ofField dom {last}) {m}).getD []).toArray",
+                 f"def call{n + 1} : {{k : ℕ}} → Fn k → (Fin k → ℚ) → ℚ",
+                 f"  | _, .{ident(name + '_ref')}{' ' + ps if ps else ''}, v => "
+                 f"({table}{' ' + ps if ps else ''}).getD ({at}) 0",
+                 f"  | _, f, v => {last} f v", ""]
+        last = f"call{n + 1}"
+    lean += [f"def interp : Interp Dom Fn ℚ := .ofField dom {last}", ""]
     args_of = getattr(examples, "ARGS", {})
     for f in raw:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
         m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
-        lean.append(f"#eval Model.entries dom {m}")
+        lean.append(f"#eval Model.entries interp {m}")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
 

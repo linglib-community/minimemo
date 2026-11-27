@@ -37,7 +37,7 @@ referent.
 
 namespace Memo.Knows
 
-open NaiveListener (Agent Dom dom denotes eq)
+open NaiveListener (Agent Dom Fn interp)
 
 /-- The names of the choices of the models. The first two are their axes. -/
 inductive Name
@@ -45,41 +45,41 @@ inductive Name
   deriving DecidableEq
 
 /-- The speaker knows the referent and chooses an utterance that describes it. -/
-def speakerKnows : Model Agent Name Dom ℚ where
+def speakerKnows : Model Agent Name Dom Fn where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .knows .speaker .self .r ;;
-    .chooses .speaker .uSaid .U (.op₂ denotes (.choice .uSaid) (.choice .r))
-  ret := .expect (.op₂ eq (.query .speaker (.choice .uSaid)) (.choice .u))
+    .chooses .speaker .uSaid .U (.call .denotes ![.choice .uSaid, .choice .r])
+  ret := .expect (.prim .eq ![.query .speaker (.choice .uSaid), .choice .u])
 
 /-- The listener knows the referent, and thinks that the speaker knows it and chooses an utterance
 that describes it. The listener then guesses the utterance. -/
-def nestedKnows : Model Agent Name Dom ℚ where
+def nestedKnows : Model Agent Name Dom Fn where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .knows .listener .self .r ;;
     .thinks .listener
       (.knows .speaker .self .r ;;
-      .chooses .speaker .uSaid .U (.op₂ denotes (.choice .uSaid) (.choice .r))) ;;
+      .chooses .speaker .uSaid .U (.call .denotes ![.choice .uSaid, .choice .r])) ;;
     .chooses .listener .uGuess .U
-      (.expect (.op₂ eq (.query .speaker (.choice .uSaid)) (.choice .uGuess)))
-  ret := .expect (.op₂ eq (.query .listener (.choice .uGuess)) (.choice .u))
+      (.expect (.prim .eq ![.query .speaker (.choice .uSaid), .choice .uGuess]))
+  ret := .expect (.prim .eq ![.query .listener (.choice .uGuess), .choice .u])
 
 /-- The speaker chooses the referent. The listener knows that choice, thinks that the speaker
 chooses an utterance that describes it, and guesses the utterance. -/
-def knowsOther : Model Agent Name Dom ℚ where
+def knowsOther : Model Agent Name Dom Fn where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .chooses .speaker .rTrue .R (.lit 1) ;;
     .knows .listener (.agent .speaker) .rTrue ;;
     .thinks .listener
-      (.chooses .speaker .uSaid .U (.op₂ denotes (.choice .uSaid) (.choice .rTrue))) ;;
+      (.chooses .speaker .uSaid .U (.call .denotes ![.choice .uSaid, .choice .rTrue])) ;;
     .chooses .listener .uGuess .U
-      (.expect (.op₂ eq (.query .speaker (.choice .uSaid)) (.choice .uGuess)))
-  ret := .expect (.op₂ eq (.query .listener (.choice .uGuess)) (.choice .u))
+      (.expect (.prim .eq ![.query .speaker (.choice .uSaid), .choice .uGuess]))
+  ret := .expect (.prim .eq ![.query .listener (.choice .uGuess), .choice .u])
 
 theorem rows_speakerKnows :
-    Model.rows dom speakerKnows =
+    Model.rows interp speakerKnows =
       some [[1/2, 1/2, 0],
             [0,   0,   1/2],
             [1/2, 0,   0],
@@ -87,7 +87,7 @@ theorem rows_speakerKnows :
   decide +kernel
 
 theorem rows_nestedKnows :
-    Model.rows dom nestedKnows =
+    Model.rows interp nestedKnows =
       some [[1/2, 1/2, 0],
             [0,   0,   1/2],
             [1/2, 0,   0],
@@ -95,7 +95,7 @@ theorem rows_nestedKnows :
   decide +kernel
 
 theorem rows_knowsOther :
-    Model.rows dom knowsOther =
+    Model.rows interp knowsOther =
       some [[1/3, 1/3, 1/3],
             [1/6, 1/6, 1/6],
             [1/6, 1/6, 1/6],

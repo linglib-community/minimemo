@@ -6,51 +6,30 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Example.NaiveListener
-public import Minimemo.Program.Map
 public import Mathlib.Basic.Real.Basic
 public import Mathlib.Data.Rat.Cast.Order
-public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.NormNum
 
 /-!
 # The naive listener with real numbers
 
-This file proves that the naive listener with real numbers returns the array that the naive
-listener with rational numbers returns.
+This file proves that the naive listener returns, with real numbers, the array that it returns
+with rational numbers.
 
-Lean evaluates the model with rational numbers. The program of the model with real numbers is
-related to the program with rational numbers along the inclusion of the rational numbers in the
-real numbers: the two have the same steps, and the denotation and the test of equality agree on
-rational numbers. So the array with real numbers is the image of the array with rational numbers.
+Lean evaluates the model with rational numbers. The interpretations of the model with rational and
+with real numbers are compatible along the inclusion of the rational numbers: the denotation
+agrees on rational numbers. So the array with real numbers is the image of the array with rational
+numbers.
 
 ## Main results
 
-* `Memo.NaiveListener.rel`: the programs with rational and with real numbers are related.
+* `Memo.NaiveListener.compat`: the two interpretations are compatible.
 * `Memo.NaiveListener.rows_real`: the array of the naive listener with real numbers.
 -/
 
 @[expose] public section
 
 namespace Memo.NaiveListener
-
-noncomputable section
-
-/-- The steps of the program of the model with numbers in `K`. -/
-def stepsOf (K : Type) [Field K] [LinearOrder K] : List (Step K) :=
-  ((Model.program (domOf K) (modelOf K)).map (·.steps)).getD []
-
-/-- The term that the program of the model with numbers in `K` returns. -/
-def retOf (K : Type) [Field K] [LinearOrder K] : Term K :=
-  ((Model.program (domOf K) (modelOf K)).map (·.ret)).getD (.lit 0)
-
-/-- The program of the model, with numbers in any field. -/
-theorem program_eq (K : Type) [Field K] [LinearOrder K] :
-    Model.program (domOf K) (modelOf K) = some ⟨[4, 3, 3, 4, 3], stepsOf K, retOf K, [0, 1]⟩ :=
-  rfl
-
-theorem eqOf_cast (a b : ℚ) : eqOf (a : ℝ) (b : ℝ) = ((eqOf a b : ℚ) : ℝ) := by
-  unfold eqOf
-  split_ifs <;> simp_all
 
 theorem denotesOf_cast (a b : ℚ) : denotesOf (a : ℝ) (b : ℝ) = ((denotesOf a b : ℚ) : ℝ) := by
   have h : ∀ (q : ℚ) (n : ℕ), ((q : ℝ) = (n : ℝ)) ↔ q = (n : ℚ) := fun q n ↦ by
@@ -64,33 +43,33 @@ theorem denotesOf_cast (a b : ℚ) : denotesOf (a : ℝ) (b : ℝ) = ((denotesOf
   simp only [h0, h1, h2, h3]
   split_ifs <;> simp
 
-/-- The program of the model with real numbers is related to the program with rational numbers,
-along the inclusion of the rational numbers. -/
-theorem rel : Program.Rel (Rat.castHom ℝ) ⟨[4, 3, 3, 4, 3], stepsOf ℚ, retOf ℚ, [0, 1]⟩
-    ⟨[4, 3, 3, 4, 3], stepsOf ℝ, retOf ℝ, [0, 1]⟩ := by
-  refine ⟨rfl, rfl, ?_, ?_⟩ <;>
-  repeat' first
-    | exact fun x ↦ denotesOf_cast _ _
-    | exact fun x ↦ eqOf_cast _ _
-    | exact fun j ↦ (Rat.cast_natCast j).symm
-    | exact Rat.cast_one.symm
-    | constructor
-    | (intro i; fin_cases i)
+theorem countOf_cast (a : ℚ) : countOf (a : ℝ) = ((countOf a : ℚ) : ℝ) := by
+  have h0 := denotesOf_cast a 0
+  have h1 := denotesOf_cast a 1
+  have h2 := denotesOf_cast a 2
+  simp only [Rat.cast_zero, Rat.cast_one, Rat.cast_ofNat] at h0 h1 h2
+  simp only [countOf, h0, h1, h2, Rat.cast_add]
+
+/-- The interpretations with rational and with real numbers are compatible along the inclusion of
+the rational numbers. -/
+theorem compat : Interp.Compat (Rat.castHom ℝ) (interpOf ℚ) (interpOf ℝ) :=
+  Interp.compat_ofField Rat.cast_strictMono (fun d ↦ by cases d <;> rfl)
+    (fun d j ↦ by cases d <;> simp [domOf]) fun f x ↦ by
+      cases f
+      · exact denotesOf_cast _ _
+      · exact countOf_cast _
 
 /-- The naive listener with real numbers returns the array of the naive listener: *green* and
 *round* leave two referents equally likely, and *pink* and *square* pick out one. -/
 theorem rows_real :
-    Model.rows (domOf ℝ) (modelOf ℝ) =
+    Model.rows (interpOf ℝ) model =
       some [[1/2, 1/2, 0],
             [0,   0,   1],
             [1,   0,   0],
             [0,   1/2, 1/2]] := by
-  have hq : (⟨[4, 3, 3, 4, 3], stepsOf ℚ, retOf ℚ, [0, 1]⟩ : Program ℚ).rows =
-      [[1/2, 1/2, 0], [0, 0, 1], [1, 0, 0], [0, 1/2, 1/2]] := by decide +kernel
-  show some (⟨[4, 3, 3, 4, 3], stepsOf ℝ, retOf ℝ, [0, 1]⟩ : Program ℝ).rows = _
-  rw [rel.rows (Rat.cast_strictMono (K := ℝ)), hq]
+  have hq : Model.rows interp model =
+      some [[1/2, 1/2, 0], [0, 0, 1], [1, 0, 0], [0, 1/2, 1/2]] := by decide +kernel
+  rw [Model.rows_map interp Rat.cast_strictMono compat, hq]
   norm_num
-
-end
 
 end Memo.NaiveListener

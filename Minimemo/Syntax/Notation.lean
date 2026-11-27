@@ -14,12 +14,12 @@ public meta import Lean.Elab.Term
 This file lets a memo model be written in Lean in the syntax of memo.
 
 The term `memo% [u : U, r : R] s₁ s₂ … return e` is the model with the axes `u` and `r`, the
-statements `sᵢ` and the returned expression `e`. Names of agents, choices and domains are written
-as in memo and stand for the constructors of the types of names with those names.
+statements `sᵢ` and the returned expression `e`. Names of agents, choices, domains and outside
+functions are written as in memo and stand for the constructors of the types of names with those
+names.
 
 ## Main definitions
 
-* `Memo.eqOp`: the operator `==` of memo, with the values one and zero.
 * `memo% …`: a model in the syntax of memo.
 
 ## Implementation notes
@@ -31,9 +31,6 @@ they remain available as identifiers outside a model.
 @[expose] public section
 
 namespace Memo
-
-/-- The operator `==` of memo: one when its arguments are equal, and zero otherwise. -/
-def eqOp {K : Type*} [DecidableEq K] [Zero K] [One K] (a b : K) : K := if a = b then 1 else 0
 
 /-- An expression of memo. -/
 declare_syntax_cat memo_expr
@@ -83,16 +80,14 @@ meta def address (n : Name) : Option Name × Name :=
 meta partial def expr : TSyntax `memo_expr → MacroM Term
   | `(memo_expr| $n:num) => `(Memo.Expr.lit $n)
   | `(memo_expr| ($e)) => expr e
-  | `(memo_expr| $a == $b) => do `(Memo.Expr.op₂ Memo.eqOp $(← expr a) $(← expr b))
-  | `(memo_expr| $a + $b) => do `(Memo.Expr.op₂ (· + ·) $(← expr a) $(← expr b))
-  | `(memo_expr| $a - $b) => do `(Memo.Expr.op₂ (· - ·) $(← expr a) $(← expr b))
-  | `(memo_expr| $a * $b) => do `(Memo.Expr.op₂ (· * ·) $(← expr a) $(← expr b))
-  | `(memo_expr| $a / $b) => do `(Memo.Expr.op₂ (· / ·) $(← expr a) $(← expr b))
+  | `(memo_expr| $a == $b) => do `(Memo.Expr.prim Memo.Prim.eq ![$(← expr a), $(← expr b)])
+  | `(memo_expr| $a + $b) => do `(Memo.Expr.prim Memo.Prim.add ![$(← expr a), $(← expr b)])
+  | `(memo_expr| $a - $b) => do `(Memo.Expr.prim Memo.Prim.sub ![$(← expr a), $(← expr b)])
+  | `(memo_expr| $a * $b) => do `(Memo.Expr.prim Memo.Prim.mul ![$(← expr a), $(← expr b)])
+  | `(memo_expr| $a / $b) => do `(Memo.Expr.prim Memo.Prim.div ![$(← expr a), $(← expr b)])
   | `(memo_expr| $f:ident ( $args,* )) => do
-    match ← args.getElems.mapM expr with
-    | #[a] => `(Memo.Expr.op₁ $f $a)
-    | #[a, b] => `(Memo.Expr.op₂ $f $a $b)
-    | _ => Macro.throwError "a function of one or two arguments is expected"
+    let args ← args.getElems.mapM expr
+    `(Memo.Expr.call $(dot f.getId) ![$args,*])
   | `(memo_expr| $f:ident [ $e ]) => do
     let e ← expr e
     if f.getId == `Pr || f.getId == `E then `(Memo.Expr.expect $e)

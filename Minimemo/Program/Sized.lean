@@ -131,19 +131,19 @@ theorem sized_push {W : Array (Table K)} (hW : ∀ x ∈ W, x.Sized size) {t : T
   · exact hW x h
   · exact ht
 
-variable [Semifield K] [LinearOrder K]
+variable {D : Type u} {F : ℕ → Type u} [Semifield K] [LinearOrder K] {I : Interp D F K}
 
 mutual
 
 /-- The table of a term is sized, when the tables so far are sized. -/
-theorem Term.sized_eval : ∀ (t : Term K) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
-    (t.eval size W).Sized size
-  | .lit r, _, _ => Table.sized_const r
+theorem Term.sized_eval : ∀ (t : Term D F) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
+    (t.eval I size W).Sized size
+  | .lit q, _, _ => Table.sized_const _
   | .op f ts, W, hW => by
     rw [Term.eval]
-    refine Table.Sized.op f fun i ↦ ?_
+    refine Table.Sized.op _ fun i ↦ ?_
     simpa using Term.sized_eval (ts i) W hW
-  | .val i v, _, _ => by
+  | .val i d, _, _ => by
     rw [Term.eval]
     intro w hw
     obtain rfl : w = (i, size i) := by simpa [Table.ofFn] using hw
@@ -162,8 +162,8 @@ theorem Term.sized_eval : ∀ (t : Term K) (W : Array (Table K)), (∀ x ∈ W, 
     exact Term.sized_eval t _ (sized_push hW (Step.sized_table s W hW))
 
 /-- The table that a step adds is sized, when the tables so far are sized. -/
-theorem Step.sized_table : ∀ (s : Step K) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
-    (s.table size W).Sized size
+theorem Step.sized_table : ∀ (s : Step D F) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
+    (s.table I size W).Sized size
   | .chooses w over t, W, hW => by
     have ht := Term.sized_eval t W hW
     rw [Step.table]
@@ -181,10 +181,10 @@ theorem Step.sized_table : ∀ (s : Step K) (W : Array (Table K)), (∀ x ∈ W,
 end
 
 /-- The tables after any steps are sized. -/
-theorem sized_foldl_run (steps : List (Step K)) :
-    ∀ x ∈ steps.foldl (Step.run size) #[.const 1], x.Sized size := by
-  have key : ∀ (steps : List (Step K)) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
-      ∀ x ∈ steps.foldl (Step.run size) W, x.Sized size := by
+theorem sized_foldl_run (steps : List (Step D F)) :
+    ∀ x ∈ steps.foldl (Step.run I size) #[.const 1], x.Sized size := by
+  have key : ∀ (steps : List (Step D F)) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
+      ∀ x ∈ steps.foldl (Step.run I size) W, x.Sized size := by
     intro steps
     induction steps with
     | nil => exact fun W hW ↦ hW
@@ -194,12 +194,13 @@ theorem sized_foldl_run (steps : List (Step K)) :
     exact Table.sized_const 1
 
 /-- Every table that a program computes is sized. -/
-theorem Program.sized_tables (p : Program K) :
-    ∀ x ∈ p.steps.foldl (Step.run p.size) #[.const 1], x.Sized p.size :=
+theorem Program.sized_tables (I : Interp D F K) (p : Program D F) :
+    ∀ x ∈ p.steps.foldl (Step.run I (p.size I)) #[.const 1], x.Sized (p.size I) :=
   sized_foldl_run p.steps
 
 /-- The table that a program returns is sized. -/
-theorem Program.sized_table (p : Program K) : p.table.Sized p.size :=
-  Term.sized_eval _ _ p.sized_tables
+theorem Program.sized_table (I : Interp D F K) (p : Program D F) :
+    (p.table I).Sized (p.size I) :=
+  Term.sized_eval _ _ (p.sized_tables I)
 
 end Memo

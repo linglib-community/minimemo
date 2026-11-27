@@ -12,10 +12,13 @@ from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith
                        SForAll, SForgetsAbout, SKnows, SObserves, SShow, SSnapshot, SWith)
 from memo.parse import parse_memo
 
-BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq",
-          Op.NEQ: "ne", Op.LT: "lt", Op.LTE: "le", Op.GT: "gt", Op.GTE: "ge", Op.AND: "both",
-          Op.OR: "either", Op.POW: "rpow"}
-UNARY = {Op.EXP: "exp", Op.LOG: "log", Op.NEG: "(- ·)", Op.ABS: "(|·|)", Op.UADD: "id"}
+# The operators of memo that minimemo has, by the name of the constructor of `Memo.Prim`.
+BINARY = {Op.ADD: "add", Op.SUB: "sub", Op.MUL: "mul", Op.DIV: "div", Op.EQ: "eq", Op.NEQ: "ne",
+          Op.LT: "lt", Op.LTE: "le", Op.AND: "both", Op.OR: "either"}
+SWAPPED = {Op.GT: "lt", Op.GTE: "le"}  # a > b is b < a
+UNARY = {Op.NEG: "neg", Op.ABS: "abs"}
+# Operators that are not rational: they are outside functions, with a meaning over the reals.
+OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow"}
 
 
 # Names of foreign functions that return booleans. memo adds two booleans as "or".
@@ -62,11 +65,14 @@ def choice(who: str, name: str) -> str:
     return here if who == "self" else f".query .{ident(who)} ({here})"
 
 
+def prim(name: str, args: list[str]) -> str:
+    """An operator of memo applied to expressions."""
+    return f".prim {name} ![{', '.join(args)}]"
+
+
 def call(name: str, args: list[str]) -> str:
-    if len(args) in (1, 2):
-        return f".op{'₁₂'[len(args) - 1]} {name} " + " ".join(f"({a})" for a in args)
-    applied = " ".join(f"(v {i})" for i in range(len(args)))
-    return f".op (fun v ↦ {name} {applied}) ![{', '.join(args)}]"
+    """An outside function applied to expressions."""
+    return f".call (.{name}) ![{', '.join(args)}]"
 
 
 def expr(e) -> str:
@@ -81,17 +87,24 @@ def expr(e) -> str:
             return f".expect ({expr(inner)})"
         case EExpect(expr=inner, reduction="variance"):
             x = expr(inner)
-            return f".op₂ (· - ·) (.expect (.op₁ (· ^ 2) ({x}))) (.op₁ (· ^ 2) (.expect ({x})))"
+            square = "(.pow 2)"
+            return prim(".sub", [f".expect ({prim(square, [x])})", prim(square, [f".expect ({x})"])])
         case EOp(op=Op.POW, args=[a, ELit(value=int(n))]) if n >= 0:
-            return f".op₁ (· ^ {n}) ({expr(a)})"
+            return prim(f"(.pow {n})", [expr(a)])
+        case EOp(op=Op.UADD, args=[a]):
+            return expr(a)
         case EOp(op=op, args=[a]) if op in UNARY:
-            return f".op₁ {UNARY[op]} ({expr(a)})"
+            return prim("." + UNARY[op], [expr(a)])
         case EOp(op=Op.ITE, args=[c, a, b]):
-            return f".op (fun v ↦ cond3 (v 0) (v 1) (v 2)) ![{expr(c)}, {expr(a)}, {expr(b)}]"
+            return prim(".ite", [expr(c), expr(a), expr(b)])
         case EOp(op=Op.ADD, args=[a, b]) if is_boolean(a) and is_boolean(b):
-            return f".op₂ either ({expr(a)}) ({expr(b)})"
+            return prim(".either", [expr(a), expr(b)])
         case EOp(op=op, args=[a, b]) if op in BINARY:
-            return f".op₂ {BINARY[op]} ({expr(a)}) ({expr(b)})"
+            return prim("." + BINARY[op], [expr(a), expr(b)])
+        case EOp(op=op, args=[a, b]) if op in SWAPPED:
+            return prim("." + SWAPPED[op], [expr(b), expr(a)])
+        case EOp(op=op, args=args) if op in OUTSIDE:
+            return call(OUTSIDE[op], [expr(a) for a in args])
         case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
             return call(ident(name), [expr(a) for a in args])
         case EMemo(name=name, args=args, ids=ids, kwargs=kwargs) if not kwargs:
@@ -99,7 +112,7 @@ def expr(e) -> str:
             if given.count(" ") != len(args):
                 raise Unsupported("a model reference whose arguments are not parameters or numbers")
             head = ident(name + "_ref") + given
-            return call(f"({head})" if given else head, [choice(who, c) for (_, who, c) in ids])
+            return call(head, [choice(who, c) for (_, who, c) in ids])
         case EImagine(do=do, then=then):
             return f".imagine ({stmts(do)}) ({expr(then)})"
     raise Unsupported(type(e).__name__)
@@ -129,7 +142,7 @@ def stmt(s) -> str:
         case SObserves(who=who, what=what, how="probability"):
             return f".observesEvent .{ident(who)} ({expr(what)})"
         case SObserves(who=who, what=what, how="boolean"):
-            return f".observesEvent .{ident(who)} (.op₁ truthy ({expr(what)}))"
+            return f".observesEvent .{ident(who)} ({prim('.truthy', [expr(what)])})"
         case SKnows(who=who, source_who=g, source_id=y):
             return f".knows .{ident(who)} {ref(g)} .{ident(y)}"
         case SWith(who=who, stmt=inner):
@@ -162,5 +175,5 @@ def model(f, name: str | None = None) -> str:
         raise Unsupported("a model with several return values")
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
-    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom ℚ where\n"
+    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom Fn where\n"
             f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(rets[0])}\n")
