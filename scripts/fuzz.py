@@ -41,11 +41,38 @@ class Frame:
         self.own = {}        # name -> domain, known to the agent
         self.others = {}     # (agent, name) -> [domain, known]
         self.models = {}     # agent -> Frame
+        self.positive = set()  # (agent, name) of others' choices whose weight is never zero
+
+    def copy(self):
+        f = Frame()
+        f.own, f.positive = dict(self.own), set(self.positive)
+        f.others = {k: list(v) for k, v in self.others.items()}
+        f.models = {a: m.copy() for a, m in self.models.items()}
+        return f
 
 
-def weight(rng, frame, new, dom):
-    """A weight for choosing `new` in `dom`, written in the scope of `frame`."""
+def weight(rng, frame, new, dom, fresh=None, exact=False):
+    """A weight for choosing `new` in `dom`, written in the scope of `frame`.
+
+    With `exact`, the weight is a whole number, so that its greatest values are the same in
+    floating point. With `fresh`, a supply of names, the weight may imagine a choice.
+    """
     opts = ["1", f"1 + {rng.randint(1, 3)} * ({new} == {rng.choice(VALUES[dom])})"]
+    for (b, y), (d, known) in frame.others.items():
+        if d == dom and known:
+            opts.append(f"1 + {rng.randint(1, 2)} * ({new} == {b}.{y})")
+    if exact:
+        for k, d in frame.own.items():
+            if {d, dom} == {"U", "R"}:
+                u, r = (new, k) if dom == "U" else (k, new)
+                opts.append(f"denotes({u}, {r}) + 2 * ({new} == {rng.choice(VALUES[dom])})")
+        return rng.choice(opts)
+    if fresh is not None:
+        for b in AGENTS:
+            z, d = next(fresh), rng.choice("UR")
+            inner = weight(rng, frame.models.get(b, Frame()), z, d)
+            value = new if d == dom and rng.random() < 0.5 else rng.choice(VALUES[d])
+            opts.append(f"1 + imagine[{b}: chooses({z} in {d}, wpp={inner}), Pr[{b}.{z} == {value}]]")
     for k, d in frame.own.items():
         if d == dom:
             opts.append(f"1 + {rng.randint(1, 2)} * ({new} == {k})")
@@ -68,12 +95,34 @@ def model(rng, index):
         a = rng.choice(AGENTS)
         fa = root.models.setdefault(a, Frame())
         kind = rng.choice(["chooses", "chooses", "knows", "thinks", "thinks", "observes",
-                           "observes", "event", "forgets"])
+                           "observes", "event", "forgets", "maximizes", "that", "that", "that",
+                           "snapshots"])
         if kind == "chooses":
             x, d = next(fresh), rng.choice("UR")
-            lines.append(f"{a}: chooses({x} in {d}, wpp={weight(rng, fa, x, d)})")
+            lines.append(f"{a}: chooses({x} in {d}, wpp={weight(rng, fa, x, d, fresh)})")
             fa.own[x] = d
             root.others[(a, x)] = [d, False]
+        elif kind == "maximizes":
+            x, d = next(fresh), rng.choice("UR")
+            lines.append(f"{a}: chooses({x} in {d}, to_maximize={weight(rng, fa, x, d, exact=True)})")
+            fa.own[x] = d
+            root.others[(a, x)] = [d, False]
+        elif kind == "that":
+            # an event that the agent gives a positive probability, at most once for each choice
+            targets = [k for k, v in fa.others.items() if not v[1] and k in fa.positive]
+            if targets:
+                b, y = rng.choice(targets)
+                test = rng.choice(["==", "!="])
+                lines.append(f"{a}: observes_that[{b}.{y} {test} "
+                             f"{rng.choice(VALUES[fa.others[(b, y)][0]])}]")
+                fa.positive.discard((b, y))
+        elif kind == "snapshots":
+            past = f"past_{a}"
+            if past not in fa.models:
+                lines.append(f"{a}: snapshots_self_as({past})")
+                fa.models[past] = fa.copy()
+                for x, d in fa.own.items():
+                    fa.others[(past, x)] = [d, True]
         elif kind == "knows":
             axis = rng.choice("ur")
             if axis not in fa.own:
@@ -86,9 +135,12 @@ def model(rng, index):
             inner = []
             for _ in range(rng.randint(1, 2)):
                 y, d = next(fresh), rng.choice("UR")
-                inner.append(f"{b}: chooses({y} in {d}, wpp={weight(rng, fb, y, d)})")
+                w = weight(rng, fb, y, d)
+                inner.append(f"{b}: chooses({y} in {d}, wpp={w})")
                 fb.own[y] = d
                 fa.others[(b, y)] = [d, False]
+                if w.startswith("1"):
+                    fa.positive.add((b, y))
             lines.append(f"{a}: thinks[{', '.join(inner)}]")
         elif kind == "observes":
             targets = [(k, v) for k, v in fa.others.items() if not v[1]]
@@ -116,7 +168,13 @@ def model(rng, index):
         terms.append(f"{rng.randint(1, 3)} * ({a}.{x} == {axis})")
     for a, fa in root.models.items():
         for (b, y), (d, known) in fa.others.items():
-            terms.append(f"{a}[Pr[{b}.{y} == {rng.choice(VALUES[d])}]]")
+            if not known:
+                terms.append(f"{a}[Pr[{b}.{y} == {rng.choice(VALUES[d])}]]")
+        for past, fp in fa.models.items():
+            if past.startswith("past_"):
+                for (b, y), (d, known) in fp.others.items():
+                    if not known:
+                        terms.append(f"{a}[{past}[Pr[{b}.{y} == {rng.choice(VALUES[d])}]]]")
     body = "\n".join("    " + line for line in lines)
     return (f"def fuzz{index}[u: U, r: R]():\n{body}\n"
             f"    return E[{' + '.join(rng.sample(terms, min(len(terms), 3)))}]\n")
