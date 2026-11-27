@@ -5,8 +5,11 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Example.Listener
+public import Minimemo.Examples.Listener
+public import Minimemo.Theory.Kernel
 public import Mathlib.Analysis.SpecialFunctions.Exp
+public import Mathlib.Topology.Order.MonotoneConvergence
+public import Mathlib.Topology.Algebra.Order.Field
 public import Mathlib.Algebra.Order.Field.Basic
 
 /-!
@@ -36,12 +39,19 @@ likely. One more depth of reasoning takes the probability `p` of the green squar
 ## Main results
 
 * `Memo.RSA.level_eq`: the array of the listener at every depth.
+* `Memo.RSA.kernel_family`: the kernel of the listener at every depth.
 * `Memo.RSA.greenSquare_eq`: on hearing *green*, the listener at depth `t` gives the green square
   the probability `prob β t`.
 * `Memo.RSA.prob_succ`: the step `p ↦ 2 / (3 + exp (β * (1 - p)))`.
 * `Memo.RSA.prob_zero_left`: when `β` is zero, the probability is one half at every depth.
 * `Memo.RSA.prob_le_half`: when `β` is not negative, the green square is at most as likely as the
   green circle at every depth.
+* `Memo.RSA.tendsto_prob`: when `β` is not negative, the probability falls with the depth to
+  `limit β`.
+* `Memo.RSA.step_limit`, `Memo.RSA.le_limit`: the limit is the greatest probability `p` with
+  `p = 2 / (3 + exp (β * (1 - p)))`.
+* `Memo.RSA.limit_anti`, `Memo.RSA.tendsto_limit`: the limit falls as `β` grows, from one half at
+  zero, and tends to zero.
 
 ## Implementation notes
 
@@ -51,6 +61,11 @@ against memo, by the tests in `tests/test_examples.py`.
 
 The parameter `β` is an outside function of no arguments, whose value the interpretation gives.
 So the model is one program for every `β`, and `β` is any real number.
+
+## TODO
+
+For `β` not negative, the equation `p = 2 / (3 + exp (β * (1 - p)))` should have one solution
+only, so that the limit is the solution. Here the limit is shown to be the greatest solution.
 
 ## References
 
@@ -230,5 +245,140 @@ theorem prob_le_half {β : ℝ} (hβ : 0 ≤ β) (t : ℕ) : 0 < prob β t ∧ p
       Real.one_le_exp (mul_nonneg hβ (by linarith [ih.2]))
     rw [prob_succ]
     exact ⟨by positivity, by rw [div_le_div_iff₀ (by positivity) (by norm_num)]; linarith⟩
+
+/-- **The kernel of the listener** at depth `t`: on hearing the utterance at a position, the
+referent at a position has the probability in the array of `prob β t`. -/
+theorem kernel_family (β : ℝ) (t i j : ℕ) :
+    family.kernel (domOf ℝ) (callOf β) (t + 1) t i {j} = ENNReal.ofReal
+      ((([[prob β t, 1 - prob β t, 0], [0, 0, 1], [1, 0, 0], [0, 1 - prob β t, prob β t]] :
+        List (List ℝ)).getD i []).getD j 0) := by
+  rw [Family.kernel, rowsKernel_apply_singleton]
+  have h : family.entries .ofField (domOf ℝ) (callOf β) (t + 1) t = arrayOf (prob β t) :=
+    level_eq β t
+  have hw : (((family.model t).axes.getLast?.map fun a ↦ (domOf ℝ a.2).size).getD 1) = 3 := rfl
+  have hc : chunks 3 (arrayOf (prob β t)) =
+      [[prob β t, 1 - prob β t, 0], [0, 0, 1], [1, 0, 0], [0, 1 - prob β t, prob β t]] := by
+    simp [chunks, arrayOf, List.range_succ]
+  rw [h, hw, hc]
+
+section Limit
+
+/-! ### The limit of the recursion -/
+
+/-- One more depth of reasoning, on the probability of the green square. -/
+noncomputable def step (β p : ℝ) : ℝ := 2 / (3 + Real.exp (β * (1 - p)))
+
+theorem prob_succ' (β : ℝ) (t : ℕ) : prob β (t + 1) = step β (prob β t) := prob_succ β t
+
+theorem step_pos (β p : ℝ) : 0 < step β p := by
+  unfold step
+  positivity
+
+/-- A listener who finds the green square more likely is followed by one who does. -/
+theorem step_mono {β : ℝ} (hβ : 0 ≤ β) : Monotone (step β) := fun p q h ↦ by
+  have he : Real.exp (β * (1 - q)) ≤ Real.exp (β * (1 - p)) :=
+    Real.exp_le_exp.2 (mul_le_mul_of_nonneg_left (by linarith) hβ)
+  exact div_le_div_of_nonneg_left (by norm_num) (by positivity) (by linarith)
+
+/-- A more rational speaker makes the next listener find the green square less likely. -/
+theorem step_anti_left {β γ p : ℝ} (h : β ≤ γ) (hp : p ≤ 1) : step γ p ≤ step β p := by
+  have he : Real.exp (β * (1 - p)) ≤ Real.exp (γ * (1 - p)) :=
+    Real.exp_le_exp.2 (mul_le_mul_of_nonneg_right h (by linarith))
+  exact div_le_div_of_nonneg_left (by norm_num) (by positivity) (by linarith)
+
+theorem continuous_step (β : ℝ) : Continuous (step β) := by
+  unfold step
+  exact continuous_const.div (by fun_prop) fun p ↦ by positivity
+
+/-- A probability that one more depth of reasoning leaves unchanged is at most one half. -/
+theorem le_half_of_step_eq {β p : ℝ} (hβ : 0 ≤ β) (h : step β p = p) : p ≤ 1 / 2 := by
+  have h3 : p < 1 := by
+    rw [← h, step, div_lt_one (by positivity)]
+    linarith [Real.exp_pos (β * (1 - p))]
+  have h1 : 1 ≤ Real.exp (β * (1 - p)) := Real.one_le_exp (mul_nonneg hβ (by linarith))
+  rw [← h, step, div_le_div_iff₀ (by positivity) (by norm_num)]
+  linarith
+
+/-- When `β` is not negative, each further depth of reasoning makes the green square at most as
+likely on hearing *green*. -/
+theorem prob_antitone {β : ℝ} (hβ : 0 ≤ β) : Antitone (prob β) := by
+  refine antitone_nat_of_succ_le fun t ↦ ?_
+  induction t with
+  | zero => exact (prob_le_half hβ 1).2
+  | succ t ih =>
+    rw [prob_succ' β (t + 1)]
+    exact (step_mono hβ ih).trans_eq (prob_succ' β t).symm
+
+/-- A more rational speaker makes the listener find the green square at most as likely, at every
+depth. -/
+theorem prob_anti_left {β γ : ℝ} (hβ : 0 ≤ β) (h : β ≤ γ) (t : ℕ) : prob γ t ≤ prob β t := by
+  induction t with
+  | zero => exact le_rfl
+  | succ t ih =>
+    rw [prob_succ', prob_succ']
+    exact (step_mono (hβ.trans h) ih).trans
+      (step_anti_left h (by linarith [(prob_le_half hβ t).2]))
+
+/-- The probability of the green square on hearing *green*, for a listener who reasons to every
+depth. -/
+noncomputable def limit (β : ℝ) : ℝ := ⨅ t, prob β t
+
+theorem bddBelow_prob {β : ℝ} (hβ : 0 ≤ β) : BddBelow (Set.range (prob β)) :=
+  ⟨0, by rintro _ ⟨t, rfl⟩; exact (prob_le_half hβ t).1.le⟩
+
+/-- As the depth of reasoning grows, the probability of the green square on hearing *green* tends
+to `limit β`. -/
+theorem tendsto_prob {β : ℝ} (hβ : 0 ≤ β) :
+    Filter.Tendsto (prob β) Filter.atTop (nhds (limit β)) :=
+  tendsto_atTop_ciInf (prob_antitone hβ) (bddBelow_prob hβ)
+
+/-- One more depth of reasoning leaves the limit unchanged:
+`limit β = 2 / (3 + exp (β * (1 - limit β)))`. -/
+theorem step_limit {β : ℝ} (hβ : 0 ≤ β) : step β (limit β) = limit β := by
+  have h1 : Filter.Tendsto (fun t ↦ prob β (t + 1)) Filter.atTop (nhds (limit β)) :=
+    (Filter.tendsto_add_atTop_iff_nat 1).2 (tendsto_prob hβ)
+  have h2 : Filter.Tendsto (fun t ↦ prob β (t + 1)) Filter.atTop (nhds (step β (limit β))) := by
+    simp_rw [prob_succ']
+    exact ((continuous_step β).tendsto _).comp (tendsto_prob hβ)
+  exact tendsto_nhds_unique h2 h1
+
+/-- The limit is a probability, and at most one half. -/
+theorem limit_mem {β : ℝ} (hβ : 0 ≤ β) : 0 < limit β ∧ limit β ≤ 1 / 2 :=
+  ⟨by rw [← step_limit hβ]; exact step_pos _ _, ciInf_le (bddBelow_prob hβ) 0⟩
+
+/-- The limit is the greatest probability that one more depth of reasoning leaves unchanged. -/
+theorem le_limit {β p : ℝ} (hβ : 0 ≤ β) (h : step β p = p) : p ≤ limit β := by
+  refine le_ciInf fun t ↦ ?_
+  induction t with
+  | zero => exact le_half_of_step_eq hβ h
+  | succ t ih =>
+    rw [prob_succ', ← h]
+    exact step_mono hβ ih
+
+/-- When `β` is zero the limit is one half. -/
+theorem limit_zero : limit 0 = 1 / 2 := by
+  simp [limit, prob_zero_left]
+
+/-- A more rational speaker makes the green square at most as likely in the limit. -/
+theorem limit_anti {β γ : ℝ} (hβ : 0 ≤ β) (h : β ≤ γ) : limit γ ≤ limit β :=
+  le_of_tendsto_of_tendsto' (tendsto_prob (hβ.trans h)) (tendsto_prob hβ) (prob_anti_left hβ h)
+
+/-- The limit is at most the probability at depth one. -/
+theorem limit_le {β : ℝ} (hβ : 0 ≤ β) : limit β ≤ 2 / (3 + Real.exp (β / 2)) := by
+  refine (ciInf_le (bddBelow_prob hβ) 1).trans (le_of_eq ?_)
+  rw [prob_succ, prob]
+  ring_nf
+
+/-- As the speaker grows more rational, the green square becomes impossible in the limit: on
+hearing *green*, the listener is sure of the green circle. -/
+theorem tendsto_limit : Filter.Tendsto limit Filter.atTop (nhds 0) := by
+  have h : Filter.Tendsto (fun β : ℝ ↦ 2 / (3 + Real.exp (β / 2))) Filter.atTop (nhds 0) :=
+    Filter.Tendsto.div_atTop tendsto_const_nhds (Filter.tendsto_atTop_add_const_left _ _
+      (Real.tendsto_exp_atTop.comp (Filter.tendsto_id.atTop_div_const (by norm_num))))
+  refine tendsto_of_tendsto_of_tendsto_of_le_of_le' tendsto_const_nhds h ?_ ?_
+  · filter_upwards [Filter.eventually_ge_atTop 0] with β hβ using (limit_mem hβ).1.le
+  · filter_upwards [Filter.eventually_ge_atTop 0] with β hβ using limit_le hβ
+
+end Limit
 
 end Memo.RSA

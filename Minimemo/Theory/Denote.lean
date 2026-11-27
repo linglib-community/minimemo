@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Bridge.Table
-public import MinimemoTheory.Transfer
+public import Minimemo.Theory.Bridge.Table
+public import Minimemo.Theory.Transfer
 
 /-!
 # The meaning of a term

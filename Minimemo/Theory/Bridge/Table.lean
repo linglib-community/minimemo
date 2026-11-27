@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Table.Get
-public import MinimemoTheory.Factor
+public import Minimemo.Theory.Table.Get
+public import Minimemo.Theory.Factor
 public import Mathlib.Tactic.SplitIfs
 
 /-!

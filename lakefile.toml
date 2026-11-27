@@ -1,6 +1,6 @@
 name = "minimemo"
-defaultTargets = ["Minimemo", "MinimemoTheory"]
-testDriver = "MinimemoTest"
+defaultTargets = ["Minimemo", "Theory", "Examples"]
+testDriver = "Test"
 
 [leanOptions]
 autoImplicit = false
@@ -15,7 +15,13 @@ rev = "fc4f59e577feb1a4956671bc04ac18aaaf8cd842"
 name = "Minimemo"
 
 [[lean_lib]]
-name = "MinimemoTheory"
+name = "Theory"
+roots = ["Minimemo.Theory"]
 
 [[lean_lib]]
-name = "MinimemoTest"
+name = "Examples"
+roots = ["Minimemo.Examples"]
+
+[[lean_lib]]
+name = "Test"
+roots = ["Minimemo.Test"]

@@ -5,7 +5,7 @@ import Mathlib.Algebra.Order.Field.Rat
 
 open Memo Memo.Table
 
-namespace MinimemoTest
+namespace Memo.Test
 
 /-- The variable 0 has three positions and the variable 1 has two; every other variable has two. -/
 def size (i : ℕ) : ℕ := if i = 0 then 3 else 2
@@ -41,4 +41,4 @@ example : (example₁.rename size [(5, 6)]).data = example₁.data := by decide 
 example : ((ofFn size [1, 2] fun σ ↦ (10 * σ 1 + σ 2 : ℚ)).rename size [(1, 2)]).data = #[0, 11] := by decide +kernel
 example : (best size 1 example₁).data = #[0, 1, 0, 1, 0, 1] := by decide +kernel
 
-end MinimemoTest
+end Memo.Test

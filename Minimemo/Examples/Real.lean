@@ -5,11 +5,12 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Example.NaiveListener
-public import MinimemoTheory.Example.PragmaticListener
-public import MinimemoTheory.Example.Knows
-public import MinimemoTheory.Example.Notation
-public import MinimemoTheory.Transfer
+public import Minimemo.Theory.Kernel
+public import Minimemo.Examples.NaiveListener
+public import Minimemo.Examples.PragmaticListener
+public import Minimemo.Examples.Knows
+public import Minimemo.Examples.Notation
+public import Minimemo.Theory.Transfer
 public import Mathlib.Basic.Real.Basic
 public import Mathlib.Data.Rat.Cast.Order
 public import Mathlib.Tactic.NormNum
@@ -91,6 +92,11 @@ theorem rows_utteranceFirst_real :
     Model.rows (interpOf ℝ) utteranceFirst = Model.rows (interpOf ℝ) model := by
   rw [Model.rows_map Rat.cast_strictMono compat, Model.rows_map Rat.cast_strictMono compat,
     rows_utteranceFirst]
+
+/-- The listener whose speaker chooses the utterance first is equivalent to the naive listener,
+whose speaker chooses the referent first. -/
+theorem equiv_utteranceFirst : Model.Equiv (interpOf ℝ) utteranceFirst model :=
+  Model.equiv_of_rows_eq rows_utteranceFirst_real
 
 end Memo.NaiveListener
 

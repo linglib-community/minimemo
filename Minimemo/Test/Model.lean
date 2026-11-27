@@ -6,7 +6,7 @@ import Mathlib.Algebra.Order.Field.Rat
 open Memo
 open scoped Memo
 
-namespace MinimemoTest
+namespace Memo.Test
 
 inductive Agent | a | b deriving DecidableEq
 inductive Name | x | y | z deriving DecidableEq
@@ -91,4 +91,4 @@ example :
       [13, 13, 13] := by
   decide +kernel
 
-end MinimemoTest
+end Memo.Test

@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Example.Listener
+public import Minimemo.Examples.Listener
 public import Mathlib.Analysis.SpecificLimits.Basic
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FieldSimp

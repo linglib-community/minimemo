@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Belief.Measure
+public import Minimemo.Theory.Belief.Measure
 public import Mathlib.Basic.NNReal.Basic
 
 /-!
