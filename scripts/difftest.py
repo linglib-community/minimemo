@@ -1,11 +1,6 @@
-"""Compare memo and minimemo on the example models.
+"""Check that memo and minimemo give the same arrays on the example models.
 
-For each model in `examples.MODELS` this runs the model in memo, prints it as a minimemo term in
-a Lean file with everything the term needs, evaluates the file with Lean, and compares the two
-arrays. A foreign function is written to the Lean file as the table of its values on the domains
-of its arguments.
-
-Run from the root of the repository, with memo installed: `python scripts/difftest.py`.
+    python scripts/difftest.py
 """
 import dataclasses
 import itertools

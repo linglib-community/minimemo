@@ -1,8 +1,6 @@
-"""The example models of minimemo as memo source, printed as minimemo terms.
+"""Example models, written in memo.
 
-`U`, `R` and `denotes` follow the Rational Speech Acts demonstration in the memo repository,
-which its authors distribute under the MIT licence.
-Run with memo installed: `python scripts/examples.py`.
+U, R and denotes are taken from memo's RSA demo.
 """
 from enum import IntEnum
 

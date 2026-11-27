@@ -1,18 +1,9 @@
-"""Print a memo model as a minimemo term.
+"""Print a memo model as a Lean term.
 
-The model is read with memo's own parser, so this file only prints. It covers the grammar of the
-memo paper and `knows`: `chooses`, `observes [..] is ..`, `thinks`, `knows`, choices, queries,
-`E[..]`, `Pr[..]`, `imagine`, arithmetic, and calls of foreign functions and of other models.
-
-The Lean file that receives the output supplies the types `Agent`, `Name` and `Dom`, the function
-`dom`, a Lean function for each foreign function under the same name, and for each referenced
-model `m` a function `mRef`. A Python name such as `u_said` becomes `uSaid`. `difftest.py` writes
-such a file.
-
-Usage, with memo installed:
+Uses memo's own parser, so memo must be installed.
 
     from memo2lean import model
-    print(model(f))        # f is the model's function, without the @memo decorator
+    print(model(f))    # f is the model function, without @memo
 """
 from fractions import Fraction
 from textwrap import indent
