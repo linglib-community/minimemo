@@ -1,24 +1,26 @@
-"""Run minimemo on memo's own tests, and check that it gives what memo gives.
-
-    git clone --depth 1 https://github.com/kach/memo
-    python scripts/memotests.py memo/demo/test.py [-v]
+"""minimemo gives what memo gives on memo's own tests.
 
 A test of memo is a model with the outcome that memo expects of it: an array, or a rejection.
-minimemo passes a test when it accepts the model exactly if memo does, with the same array.
+minimemo passes a test when it accepts the model exactly if memo does, with the same array. A test
+that uses a part of memo that minimemo does not have is skipped.
+
+The tests are read from `memo-src/demo/test.py`, or from the file that `MEMO_TESTS` names:
+
+    git clone --depth 1 https://github.com/kach/memo memo-src
 """
-import collections
 import dataclasses
+import os
 import pathlib
 import runpy
 import subprocess
-import sys
 
 import memo
+import pytest
 from memo import codegen
 from memo.core import EMemo, MemoError
 from memo.parse import parse_memo
 
-from difftest import ROOT, agree, nodes, run, source
+from lean import ROOT, agree, nodes, run, source
 from memo2lean import Unsupported
 
 
@@ -117,25 +119,33 @@ def check(i: int, t: Test) -> tuple[str, str]:
     return ("ok", "") if agree(got, t.out, sizes[name]) else ("differs", "the arrays differ")
 
 
-def main() -> int:
+def collect() -> list[Test]:
+    """The tests of memo, with what memo does on each: memo's file of tests is run once."""
+    given = os.environ.get("MEMO_TESTS")
+    path = pathlib.Path(given) if given else ROOT / "memo-src" / "demo" / "test.py"
+    if not path.exists():
+        return []
+    original = memo.memo_test, memo.memo
     memo.memo_test, memo.memo = memo_test, memo_
-    path = pathlib.Path(sys.argv[1]).resolve()
-    runpy.run_path(str(path), run_name="__main__")
-    verdicts = [check(i, t) for i, t in enumerate(tests)]  # one Lean process at a time
-    counts, reasons = collections.Counter(), collections.Counter()
-    for t, (verdict, why) in zip(tests, verdicts):
-        counts[verdict] += 1
-        if verdict == "skipped":
-            reasons[why] += 1
-        if verdict == "differs" or "-v" in sys.argv:
-            print(f"{verdict:8} {t.f.__name__}{'  (' + why + ')' if why else ''}")
-    compared = counts["ok"] + counts["differs"]
-    print(f"\n{counts['ok']} of {compared} tests agree; {counts['skipped']} of {len(tests)} "
-          "are outside minimemo")
-    for why, n in reasons.most_common():
-        print(f"{n:4}  {why}")
-    return 1 if counts["differs"] else 0
+    try:
+        runpy.run_path(str(path.resolve()), run_name="__main__")
+    finally:
+        memo.memo_test, memo.memo = original
+    return tests
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+TESTS = collect()
+
+
+def test_suite_found():
+    if not TESTS:
+        pytest.skip("memo's tests are not here: clone memo to memo-src, or set MEMO_TESTS to its "
+                    "demo/test.py")
+
+
+@pytest.mark.parametrize("i", range(len(TESTS)), ids=[t.f.__name__ for t in TESTS])
+def test_memo_test(i):
+    verdict, why = check(i, TESTS[i])
+    if verdict == "skipped":
+        pytest.skip(why)
+    assert verdict == "ok", why

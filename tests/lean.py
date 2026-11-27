@@ -1,7 +1,4 @@
-"""Check that memo and minimemo give the same arrays on the example models.
-
-    python scripts/difftest.py [module] [-v]
-"""
+"""Run memo models in Lean, and compare the arrays with those of memo."""
 import dataclasses
 import itertools
 import pathlib
@@ -19,13 +16,11 @@ from memo.core import (EChoice, EFFI, EMemo, EOp, EWith, SChoose, SForAll, SKnow
 from memo.parse import parse_memo
 
 import enum
-import importlib
 
 import memo2lean
 from memo2lean import Unsupported, ident, model
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-OUT = ROOT / "scratch" / "difftest.lean"
 DEPTH = 64  # how deep references between models are followed
 
 
@@ -193,7 +188,7 @@ def source(raw, env, args_of, shown=None):
     return "\n".join(lean) + "\n", sizes
 
 
-def run(text, path=OUT, timeout=None):
+def run(text, path, timeout=None):
     """The arrays and the reasons for rejection that Lean prints for the file `text`: for each
     model shown, the entries of its array or `None`, and the reason or `None`."""
     path.parent.mkdir(exist_ok=True, parents=True)
@@ -221,21 +216,16 @@ def agree(got, out, sizes) -> bool:
         abs(g - w) < 1e-4 * max(1, abs(w)) for g, w in zip(got, want))
 
 
-def main() -> int:
-    examples = importlib.import_module(
-        next((a for a in sys.argv[1:] if not a.startswith('-')), 'examples'))
-    raw = list(examples.MODELS)
-    args_of = getattr(examples, "ARGS", {})
-    text, sizes = source(raw, vars(examples), args_of)
-    try:
-        results, reasons = run(text)
-    except RuntimeError as e:
-        print(e)
-        return 1
-
-    scope = vars(examples)
+def compare(module) -> dict:
+    """For each model of a module, whether memo and minimemo give the same array or both reject
+    the model, with what differs if they do not."""
+    raw = list(module.MODELS)
+    args_of = getattr(module, "ARGS", {})
+    text, sizes = source(raw, vars(module), args_of)
+    results, reasons = run(text, ROOT / "scratch" / f"{module.__name__}.lean")
+    scope = vars(module)
     scope["memo"] = memo
-    failed = 0
+    verdicts = {}
     for f, got, reason in zip(raw, results, reasons, strict=True):
         # memo compiles a model in the scope of its caller, which has to be the module of the model
         try:
@@ -244,20 +234,11 @@ def main() -> int:
         except MemoError:
             out = None
         if got is None or out is None:
-            ok = got is None and out is None
-            failed += not ok
-            print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}  (rejected: {reason or 'by memo only'})")
+            rejected = "minimemo rejects it" if got is None else "memo rejects it"
+            verdicts[f.__name__] = (got is None and out is None, f"only {rejected}: {reason}")
             continue
-        ok = agree(got, out, sizes[f.__name__])
-        failed += not ok
-        print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}")
-        if not ok and "-v" in sys.argv:
-            want = numpy.broadcast_to(numpy.asarray(out), sizes[f.__name__]).ravel()
-            print("   memo:", [round(float(w), 5) for w in want])
-            print("   lean:", [round(g, 5) for g in got])
-    print(f"{len(raw) - failed} of {len(raw)} models agree")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        want = numpy.broadcast_to(numpy.asarray(out), sizes[f.__name__]).ravel()
+        verdicts[f.__name__] = (agree(got, out, sizes[f.__name__]),
+                                f"memo: {[round(float(w), 5) for w in want]}\n"
+                                f"lean: {[round(g, 5) for g in got]}")
+    return verdicts

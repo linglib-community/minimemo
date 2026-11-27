@@ -47,7 +47,7 @@ likely. One more depth of reasoning takes the probability `p` of the green squar
 
 The real numbers are not computed with: the results are proved on the meaning of the program, in
 which the array of the listener below is a variable. The same model is run in floating point,
-against memo, by `scripts/difftest.py examples_exp`.
+against memo, by the tests in `tests/test_examples.py`.
 
 The parameter `β` is an outside function of no arguments, whose value the interpretation gives.
 So the model is one program for every `β`, and `β` is any real number.

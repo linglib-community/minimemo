@@ -18,22 +18,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install memo-lang==1.3.3
-      - name: compare with memo on the example models
-        run: python scripts/difftest.py
-      - name: compare with memo on models with the exponential, in floating point
-        run: python scripts/difftest.py examples_exp
-      - name: compare with memo on random models
+      - name: compare with memo
         run: |
-          for seed in 1 2 3 4; do
-            python scripts/fuzz.py $seed 25
-            python scripts/difftest.py fuzz_models -v
-          done
-      - name: run memo's own tests
-        run: |
-          pip install matplotlib pandas seaborn tqdm ipython scipy
+          pip install memo-lang==1.3.3 pytest matplotlib pandas seaborn tqdm ipython scipy
           git clone --depth 1 https://github.com/kach/memo memo-src
-          python scripts/memotests.py "$PWD/memo-src/demo/test.py"
+          pytest
       - name: report on memo's demos
-        run: |
-          python scripts/demos.py "$PWD/memo-src/demo"
+        run: python scripts/demos.py "$PWD/memo-src/demo"

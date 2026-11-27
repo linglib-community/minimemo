@@ -1,11 +1,6 @@
-"""Write random memo models to scripts/fuzz_models.py.
-
-    python scripts/fuzz.py [seed] [count]
-    python scripts/difftest.py fuzz_models -v
-"""
+"""Random memo models, some of which memo does not accept."""
 import pathlib
 import random
-import sys
 
 HEADER = '''from enum import IntEnum
 
@@ -235,16 +230,10 @@ def spoil(rng, root, lines, terms, fresh):
     return True
 
 
-def main():
-    seed = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    count = int(sys.argv[2]) if len(sys.argv) > 2 else 20
+def write(path: pathlib.Path, seed: int, count: int) -> None:
+    """Write `count` random models, from the seed, to a module at `path`."""
     rng = random.Random(seed)
     EARLIER.clear()
     models = [model(rng, i) for i in range(count)]
     names = ", ".join(f"fuzz{i}" for i in range(count))
-    out = pathlib.Path(__file__).with_name("fuzz_models.py")
-    out.write_text(HEADER + "\n\n".join(models) + f"\n\nMODELS = [{names}]\n")
-
-
-if __name__ == "__main__":
-    main()
+    path.write_text(HEADER + "\n\n".join(models) + f"\n\nMODELS = [{names}]\n")
