@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>minimemo</title>
+<style>
+  body { max-width: 46em; margin: 1.5em; line-height: 1.4; }
+  pre { overflow-x: auto; border: 1px solid; padding: 0.5em; }
+  table { display: inline-table; margin: 0 2em 1em 0; vertical-align: top; }
+  td, th { text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>minimemo</h1>
+
+<p>
+minimemo is a formalization in <a href="https://lean-lang.org">Lean 4</a> of
+<a href="https://github.com/kach/memo">memo</a>, the probabilistic programming language of
+Kartik Chandra, Tony Chen, Joshua B. Tenenbaum and Jonathan Ragan-Kelley. A memo model is
+translated to a Lean term. The term is evaluated with exact rational arithmetic, and properties
+of the model are stated and proved as theorems.
+</p>
+
+<p>
+[ <a href="https://github.com/linglib-community/minimemo">source</a> |
+<a href="https://github.com/kach/memo">memo</a> ]
+</p>
+
+<hr>
+
+<h2>1. A model, in memo</h2>
+
+<p>
+There are four utterances, <i>green</i>, <i>pink</i>, <i>square</i> and <i>round</i>, and three
+referents: a green square, a green circle and a pink circle. A listener thinks that a speaker
+picks a referent and then says something true of it. The listener hears the utterance and guesses
+the referent. This is the first model of the memo paper.
+</p>
+
+<pre>
+@memo
+def naive[u: U, r: R]():
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
+    ]
+    listener: observes [speaker.u_said] is u
+    listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick])
+    return Pr[listener.r_pick == r]
+</pre>
+
+<h2>2. The same model, in Lean</h2>
+
+<p>
+This term is printed from the source above by a script that calls memo's parser.
+</p>
+
+<pre>
+def naive : Model Agent Name Dom ℚ where
+  axes := [(.u, .U), (.r, .R)]
+  body :=
+    .thinks .listener
+      (.chooses .speaker .rTrue .R (.lit 1) ;;
+      .chooses .speaker .uSaid .U (.op₂ denotes (.choice .uSaid) (.choice .rTrue))) ;;
+    .observes .listener .speaker .uSaid .self .u ;;
+    .chooses .listener .rPick .R (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
+  ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
+</pre>
+
+<h2>3. Running it</h2>
+
+<p>
+memo returns an array with a row for each utterance and a column for each referent. Lean returns
+the same array, in rational numbers.
+</p>
+
+<table border="1" cellpadding="4">
+<caption>memo</caption>
+<tr><th></th><th>green square</th><th>green circle</th><th>pink circle</th></tr>
+<tr><th><i>green</i></th><td>0.5</td><td>0.5</td><td>0</td></tr>
+<tr><th><i>pink</i></th><td>0</td><td>0</td><td>1</td></tr>
+<tr><th><i>square</i></th><td>1</td><td>0</td><td>0</td></tr>
+<tr><th><i>round</i></th><td>0</td><td>0.5</td><td>0.5</td></tr>
+</table>
+
+<table border="1" cellpadding="4">
+<caption>Lean</caption>
+<tr><th></th><th>green square</th><th>green circle</th><th>pink circle</th></tr>
+<tr><th><i>green</i></th><td>1/2</td><td>1/2</td><td>0</td></tr>
+<tr><th><i>pink</i></th><td>0</td><td>0</td><td>1</td></tr>
+<tr><th><i>square</i></th><td>1</td><td>0</td><td>0</td></tr>
+<tr><th><i>round</i></th><td>0</td><td>1/2</td><td>1/2</td></tr>
+</table>
+
+<p>
+In Lean the array is a theorem, proved by evaluation.
+</p>
+
+<pre>
+theorem tensor_rows :
+    tensor.rows 4 3 =
+      [[1/2, 1/2, 0],
+       [0,   0,   1],
+       [1,   0,   0],
+       [0,   1/2, 1/2]] := by
+  decide +kernel
+</pre>
+
+<h2>4. A second model</h2>
+
+<p>
+A pragmatic listener thinks that the speaker reasons about a listener. Its speaker chooses an
+utterance with weight the probability that the naive listener would give the referent that the
+speaker means. One line of the model changes.
+</p>
+
+<pre>
+@memo
+def pragmatic[u: U, r: R]():
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=naive[u_said, r_true]())
+    ]
+    listener: observes [speaker.u_said] is u
+    listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick])
+    return Pr[listener.r_pick == r]
+</pre>
+
+<table border="1" cellpadding="4">
+<caption>memo</caption>
+<tr><th></th><th>green square</th><th>green circle</th><th>pink circle</th></tr>
+<tr><th><i>green</i></th><td>0.4</td><td>0.6</td><td>0</td></tr>
+<tr><th><i>pink</i></th><td>0</td><td>0</td><td>1</td></tr>
+<tr><th><i>square</i></th><td>1</td><td>0</td><td>0</td></tr>
+<tr><th><i>round</i></th><td>0</td><td>0.6</td><td>0.4</td></tr>
+</table>
+
+<table border="1" cellpadding="4">
+<caption>Lean</caption>
+<tr><th></th><th>green square</th><th>green circle</th><th>pink circle</th></tr>
+<tr><th><i>green</i></th><td>2/5</td><td>3/5</td><td>0</td></tr>
+<tr><th><i>pink</i></th><td>0</td><td>0</td><td>1</td></tr>
+<tr><th><i>square</i></th><td>1</td><td>0</td><td>0</td></tr>
+<tr><th><i>round</i></th><td>0</td><td>3/5</td><td>2/5</td></tr>
+</table>
+
+<p>
+On hearing <i>green</i>, the naive listener cannot decide between the two green things. The
+pragmatic listener leans toward the circle, because a speaker who meant the square could have
+said <i>square</i>.
+</p>
+
+<h2>5. A theorem about the two models</h2>
+
+<p>
+Suppose that <i>a</i> people hear <i>green</i> and pick the green square, and <i>b</i> pick the
+green circle. The likelihood of these data under a model is the product of the probabilities that
+the model gives the picks.
+</p>
+
+<pre>
+def likelihood (z : Tensor ℚ) (a b : ℕ) : ℚ := z.entry [0, 0] ^ a * z.entry [0, 1] ^ b
+</pre>
+
+<p>
+If at least two thirds of the people pick the circle, the pragmatic listener has the greater
+likelihood. The theorem quantifies over all such data.
+</p>
+
+<pre>
+theorem likelihood_lt {a b : ℕ} (h : 2 * a ≤ b) (hb : 0 &lt; b) :
+    likelihood NaiveListener.tensor a b &lt; likelihood tensor a b
+</pre>
+
+<p>
+The demonstration of this model in the memo repository uses the counts 65 and 115, from Qing and
+Franke (2015). For these counts the inequality is proved by evaluation.
+</p>
+
+<pre>
+theorem likelihood_lt_demo :
+    likelihood NaiveListener.tensor 65 115 &lt; likelihood tensor 65 115 := by
+  decide +kernel
+</pre>
+
+<h2>6. Two more theorems</h2>
+
+<p>
+A speaker who chooses the utterance first, and then a referent that it describes, gives the
+listener the same array as the speaker of the first model.
+</p>
+
+<pre>
+theorem infer_utteranceFirst :
+    (infer dom utteranceFirst).map (·.rows 4 3) = (infer dom model).map (·.rows 4 3)
+</pre>
+
+<p>
+For every statement and frame, multiplying the weight of a choice by a nonzero number does not
+change the effect of the choice.
+</p>
+
+<pre>
+theorem run_chooses_mul {c : K} (hc : c ≠ 0) (α : A) (x : N) (X : D) (e : Expr A N D K) :
+    run dom (.chooses α x X (.op₁ (c * ·) e)) Φ n = run dom (.chooses α x X e) Φ n
+</pre>
+
+<hr>
+
+<h2>Notes</h2>
+
+<ul>
+<li>minimemo covers the grammar of the memo paper: <code>chooses</code>, <code>observes</code>,
+<code>thinks</code>, queries, <code>E</code> and <code>Pr</code>, and <code>imagine</code>.</li>
+<li>In memo's demonstration the pragmatic speaker's weight is the exponential of a multiple of
+the listener's probability. Here it is the probability, so that the numbers are rational.</li>
+<li>A foreign function such as <code>denotes</code> is written a second time, in Lean.</li>
+<li>The memo arrays on this page were computed with memo 1.3.3.</li>
+</ul>
+
+<p>
+K. Chandra, T. Chen, J. B. Tenenbaum and J. Ragan-Kelley.
+<i>A Domain-Specific Probabilistic Programming Language for Reasoning about Reasoning
+(Or: A Memo on memo)</i>.
+Proceedings of the ACM on Programming Languages 9, OOPSLA2, Article 300, 2025.
+</p>
+
+<hr>
+
+<address>
+<a href="https://github.com/linglib-community/minimemo">github.com/linglib-community/minimemo</a>.
+Last modified 26 November 2026.
+</address>
+
+</body>
+</html>
