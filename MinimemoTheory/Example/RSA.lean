@@ -125,20 +125,20 @@ section Step
 
 /-- The term for the weight of the utterance at depth zero: the denotation. -/
 def weightTerm₀ : Term Dom (Refs Unit Fn) :=
-  .rename [] (.op (.inl .mul) ![.op (.inr (.inr .denotes)) ![.val 3 .U, .val 2 .R], .lit 1])
+  .rename [] (.app (.inl .mul) [.app (.inr (.inr .denotes)) [.val 3 .U, .val 2 .R], .lit 1])
 
 /-- The term for the weight of the utterance at a depth above zero: the denotation times the
 exponential of `β` times the probability that the listener below gives the referent. -/
 def weightTerm : Term Dom (Refs Unit Fn) :=
-  .rename [] (.op (.inl .mul) ![.op (.inr (.inr .denotes)) ![.val 3 .U, .val 2 .R],
-    .op (.inr (.inr .exp)) ![.op (.inl .mul) ![.op (.inr (.inr .beta)) ![],
-      .op (.inr (.inl ())) ![.val 3 .U, .val 2 .R]]]])
+  .rename [] (.app (.inl .mul) [.app (.inr (.inr .denotes)) [.val 3 .U, .val 2 .R],
+    .app (.inr (.inr .exp)) [.app (.inl .mul) [.app (.inr (.inr .beta)) [],
+      .app (k := 2) (.inr (.inl ())) [.val 3 .U, .val 2 .R]]]])
 
-theorem program_zero : Model.program (model 0) = .ok (Listener.program weightTerm₀) := by
-  program_rfl
+theorem program_zero : Model.program (model 0) = .ok (Listener.program weightTerm₀) :=
+  rfl
 
-theorem program_one : Model.program (model 1) = .ok (Listener.program weightTerm) := by
-  program_rfl
+theorem program_one : Model.program (model 1) = .ok (Listener.program weightTerm) :=
+  rfl
 
 theorem model_succ (t : ℕ) : model (t + 1) = model 1 := by
   simp [model]

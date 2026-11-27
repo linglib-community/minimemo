@@ -78,11 +78,16 @@ namespace Term
 
 variable {D : Type u} {F : ℕ → Type u}
 
+/-- The operator `o` applied to the terms of a list. The terms of a program are built with it, so
+that two programs are the same when their lists are. -/
+def app {k : ℕ} (o : Prim k ⊕ F k) (ts : List (Term D F)) : Term D F :=
+  .op o fun i ↦ ts.getD i (.lit 0)
+
 /-- The product of two terms. -/
-def mul (a b : Term D F) : Term D F := .op (.inl .mul) ![a, b]
+def mul (a b : Term D F) : Term D F := .app (.inl .mul) [a, b]
 
 /-- The quotient of two terms. -/
-def div (a b : Term D F) : Term D F := .op (.inl .div) ![a, b]
+def div (a b : Term D F) : Term D F := .app (.inl .div) [a, b]
 
 /-- The belief `w` after the choices in `over` are made together with weight `t`: the table `w`
 times `t` divided by the sum of `t` over them. -/

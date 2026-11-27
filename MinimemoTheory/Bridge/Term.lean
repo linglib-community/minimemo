@@ -96,14 +96,14 @@ theorem toFactor_mul (a b : Term D F) :
     Table.toFactor size ((Term.mul a b).eval J size W) =
       Table.toFactor size (a.eval J size W) * Table.toFactor size (b.eval J size W) := by
   funext σ
-  rw [Term.mul, toFactor_op, hJ.mul]
+  rw [Term.mul, Term.app, toFactor_op, hJ.mul]
   rfl
 
 theorem toFactor_div (a b : Term D F) :
     Table.toFactor size ((Term.div a b).eval J size W) =
       Table.toFactor size (a.eval J size W) / Table.toFactor size (b.eval J size W) := by
   funext σ
-  rw [Term.div, toFactor_op, hJ.div]
+  rw [Term.div, Term.app, toFactor_op, hJ.div]
   rfl
 
 variable (w : ℕ) (u : Finset ℕ)

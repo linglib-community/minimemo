@@ -8,7 +8,6 @@ module
 public import MinimemoTheory.Example.NaiveListener
 public import MinimemoTheory.Denote
 public import Mathlib.Algebra.Order.Field.Basic
-public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.NormNum
 public import Mathlib.Tactic.FieldSimp
@@ -44,23 +43,6 @@ namespace Memo.Listener
 
 open NaiveListener (Dom domOf denotesOf)
 
-/-- Closes the goal that the program of a model is a program that is written out, when the two
-have the same terms. The program written out is on the left while the terms are compared, so that
-a term of another form is told apart without computing the program of the model. -/
-macro "program_rfl" : tactic => `(tactic|
-  (symm
-   show Except.ok (Program.mk _ [_, _, _, _, _, _, _] _ _) =
-      Except.ok (Program.mk _ [_, _, _, _, _, _, _] _ _)
-   congr 1
-   congr 1 <;>
-    repeat' first
-      | (show Term.rename _ _ = Term.rename _ _; congr 1)
-      | (show Term.op _ _ = Term.op _ _; congr 1)
-      | (show Term.sum _ _ = Term.sum _ _; congr 1)
-      | (show _ :: _ = _ :: _; congr 1)
-      | (funext i; fin_cases i)
-      | rfl))
-
 variable {F : ℕ → Type}
 
 /-- The sizes of the choices of the model: the axes `0` and `1`, the referent `2` and the
@@ -77,12 +59,12 @@ def term₄ : Term Dom F := Term.chooses 2 [3] (.ref 3)
 def term₅ : Term Dom F := Term.observes 4 [2]
 /-- The probability that the listener gives to a referent. -/
 def term₆ : Term Dom F :=
-  .rename [(3, 0)] (Term.expect 5 [2] (.op (.inl .eq) ![.rename [] (.val 2 .R), .val 4 .R]))
+  .rename [(3, 0)] (Term.expect 5 [2] (.app (.inl .eq) [.rename [] (.val 2 .R), .val 4 .R]))
 /-- The listener chooses a referent. -/
 def term₇ : Term Dom F := Term.chooses 0 [4] (.ref 6)
 /-- The probability that the listener chooses the referent of the second axis. -/
 def termRet : Term Dom F :=
-  Term.expect 7 [4] (.op (.inl .eq) ![.rename [(3, 0)] (.val 4 .R), .val 1 .R])
+  Term.expect 7 [4] (.app (.inl .eq) [.rename [(3, 0)] (.val 4 .R), .val 1 .R])
 
 /-- The program of the model, with `wt` the term for the weight of the utterance. -/
 def program (wt : Term Dom F) : Program Dom F :=

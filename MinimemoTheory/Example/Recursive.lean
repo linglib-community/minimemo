@@ -7,7 +7,6 @@ module
 
 public import MinimemoTheory.Example.Listener
 public import Mathlib.Analysis.SpecificLimits.Basic
-public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FieldSimp
 public import Mathlib.Tactic.Linarith
@@ -122,13 +121,13 @@ open Listener (arrayOf)
 /-- The term for the weight of the utterance at a depth above zero: the denotation times the
 probability that the listener below gives the referent. -/
 def weightTerm : Term Dom (Refs Unit Fn) :=
-  .rename [] (.op (.inl .mul) ![.op (.inr (.inr .denotes)) ![.val 3 .U, .val 2 .R],
-    .op (.inr (.inl ())) ![.val 3 .U, .val 2 .R]])
+  .rename [] (.app (.inl .mul) [.app (.inr (.inr .denotes)) [.val 3 .U, .val 2 .R],
+    .app (k := 2) (.inr (.inl ())) [.val 3 .U, .val 2 .R]])
 
 /-- The program of the model at a depth above zero is the program of a listener, with that
 weight. -/
-theorem program_eq : Model.program (model 1) = .ok (Listener.program weightTerm) := by
-  program_rfl
+theorem program_eq : Model.program (model 1) = .ok (Listener.program weightTerm) :=
+  rfl
 
 theorem model_succ (t : ℕ) : model (t + 1) = model 1 := by
   simp [model]

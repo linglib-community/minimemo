@@ -199,7 +199,8 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) :
     | some i => rs i
     | none =>
       let ts := fun i ↦ (rs i).toOption.getD (.lit 0, [])
-      .ok (.op o fun i ↦ (ts i).1, ((List.finRange _).flatMap fun i ↦ (ts i).2).dedup)
+      .ok (.app o ((List.finRange _).map fun i ↦ (ts i).1),
+        ((List.finRange _).flatMap fun i ↦ (ts i).2).dedup)
   | .choice x =>
     (orError (S.entries.lookup (.self, x)) (.unknownChoice .self x)).map fun c ↦
       (.val c.index c.dom, [c.index])
