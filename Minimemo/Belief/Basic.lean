@@ -78,6 +78,13 @@ theorem Factor.sumOver_updateFinset (s : Finset ι) (f : Factor X K) (σ : ∀ i
     (τ : ∀ i : s, X i) : f.sumOver s (Function.updateFinset σ s τ) = f.sumOver s σ := by
   simp only [Factor.sumOver, Function.updateFinset_updateFinset_self]
 
+/-- The sum over no choices is the factor. -/
+@[simp] theorem Factor.sumOver_empty (f : Factor X K) : f.sumOver ∅ = f := by
+  funext σ
+  have : Unique (∀ i : (∅ : Finset ι), X i) := Pi.uniqueOfIsEmpty _
+  rw [Factor.sumOver, Fintype.sum_unique]
+  congr 1
+
 /-- The sum over a union of two disjoint sets of choices is the sum over one of the sum over the
 other. -/
 theorem Factor.sumOver_union {s t : Finset ι} (hst : Disjoint s t) (f : Factor X K) :

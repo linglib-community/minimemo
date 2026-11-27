@@ -62,6 +62,13 @@ omit [∀ i, Fintype (X i)] in
     b.measure σ {τ} = b.weight (Function.updateFinset σ b.uncertain τ) :=
   toMeasure_apply_singleton _ _
 
+omit [∀ i, Fintype (X i)] [∀ i, MeasurableSingletonClass (X i)] in
+/-- Beliefs with the same uncertain choices and equal factors have the same measure. -/
+theorem measure_congr {u : Finset ι} {f g : Factor X ℝ≥0} (h : f = g) (σ : ∀ i, X i) :
+    (Belief.mk u f).measure σ = (Belief.mk u g).measure σ := by
+  subst h
+  rfl
+
 theorem measure_univ : b.measure σ Set.univ = (b.weight.sumOver b.uncertain σ : ℝ≥0) := by
   rw [measure, toMeasure_univ, Factor.sumOver, ENNReal.ofNNReal_finsetSum]
 

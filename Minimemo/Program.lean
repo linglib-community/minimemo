@@ -31,6 +31,7 @@ table `1`, a third along the choice `1`, and the term
 * `Memo.Step K`: a choice, a weight, an observation or a forgetting.
 * `Memo.Program K`: a list of steps, a term and the axes of the array.
 * `Memo.Term.eval W t`: the table of the term `t`, when `W` holds the tables so far.
+* `Memo.Step.table W s`: the table that the step `s` adds.
 * `Memo.Step.run W s`: the tables after the step `s`.
 * `Memo.Program.entries p`: the entries of the array of the program `p`, in row-major order.
 * `Memo.Program.rows p`: the same entries, as rows along the last axis.
@@ -104,20 +105,23 @@ def Term.eval (W : Array (Table K)) : Term K → Table K
   | .expect w over t => (t.eval W * W.getD w (.const 1)).sumOver over
   | .rename links t => (t.eval W).rename links
   | .best i size t => (t.eval W).best i size
-  | .after s t => t.eval (s.run W)
+  | .after s t => t.eval (W.push (s.table W))
 
-/-- The tables after a step: the tables so far and the new one. -/
-def Step.run (W : Array (Table K)) : Step K → Array (Table K)
+/-- The **table of a step**: the table that it adds, when `W` holds the tables so far. -/
+def Step.table (W : Array (Table K)) : Step K → Table K
   | .chooses w over t =>
     let x := t.eval W
-    W.push (W.getD w (.const 1) * (x / x.sumOver over))
-  | .weighs w t => W.push (W.getD w (.const 1) * t.eval W)
+    W.getD w (.const 1) * (x / x.sumOver over)
+  | .weighs w t => W.getD w (.const 1) * t.eval W
   | .observes w over =>
     let x := W.getD w (.const 1)
-    W.push (x / x.sumOver over)
-  | .forgets w over => W.push ((W.getD w (.const 1)).sumOver over)
+    x / x.sumOver over
+  | .forgets w over => (W.getD w (.const 1)).sumOver over
 
 end
+
+/-- The tables after a step: the tables so far and the new one. -/
+def Step.run (W : Array (Table K)) (s : Step K) : Array (Table K) := W.push (s.table W)
 
 /-- The table that a program returns: the table of its term after its steps. -/
 def Program.table (p : Program K) : Table K := p.ret.eval (p.steps.foldl Step.run #[.const 1])
