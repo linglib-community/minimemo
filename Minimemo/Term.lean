@@ -129,7 +129,7 @@ variable {D : Type u} {F : ℕ → Type u} {K : Type u} (I : Interp D F K)
 number of a choice has the size one, so that every number has a position. -/
 def Program.size (p : Program D F) (i : ℕ) : ℕ := (p.doms[i]?.map fun d ↦ (I.dom d).size).getD 1
 
-variable [Semifield K] [LinearOrder K] (size : ℕ → ℕ)
+variable [Zero K] [One K] [Add K] [LE K] [DecidableLE K] (size : ℕ → ℕ)
 
 /-- The **table of a term**, when `W` holds the tables so far. A link between two choices of
 different sizes is not followed. -/

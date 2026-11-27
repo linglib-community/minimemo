@@ -7,3 +7,4 @@ public import Minimemo.Table
 public import Minimemo.Term
 public import Minimemo.Compile
 public import Minimemo.Model
+public import Minimemo.Float

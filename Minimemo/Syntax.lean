@@ -65,6 +65,16 @@ inductive Ref (A : Type u) : Type u
   | agent (α : A)
   deriving DecidableEq, Repr
 
+/-- The **operators of memo that leave the rational numbers**: the exponential, the logarithm and
+the power with any exponent. A model uses them as outside functions, with their meaning in the
+real numbers or in floating point. -/
+inductive Exp : ℕ → Type
+  | exp : Exp 1
+  | log : Exp 1
+  /-- The power `a ** b`. -/
+  | rpow : Exp 2
+  deriving DecidableEq, Repr
+
 /-- The **operators** of memo, by their number of arguments. A test has the value one when it
 holds and zero when it does not, and a number is taken as true when it is not zero. -/
 inductive Prim : ℕ → Type

@@ -35,7 +35,7 @@ def Model.error (M : Model A N D F) : Option (Error A N) :=
   | .error e => some e
   | .ok _ => none
 
-variable {K : Type u} [Semifield K] [LinearOrder K] (I : Interp D F K)
+variable {K : Type u} [Zero K] [One K] [Add K] [LE K] [DecidableLE K] (I : Interp D F K)
 
 /-- The entries of the array of a model, in row-major order. -/
 def Model.entries (M : Model A N D F) : Option (List K) :=

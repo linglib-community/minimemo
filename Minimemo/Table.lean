@@ -97,7 +97,7 @@ def sumOver [Zero K] [Add K] (I : List ℕ) (t : Table K) : Table K :=
 
 /-- The table with the number one at the positions where `t` is greatest along the variable `i`,
 and zero elsewhere. -/
-def best [Zero K] [One K] [LinearOrder K] (i : ℕ) (t : Table K) : Table K :=
+def best [Zero K] [One K] [LE K] [DecidableLE K] (i : ℕ) (t : Table K) : Table K :=
   ofFn size t.vars fun σ ↦
     if (List.range (size i)).all fun j ↦ t.get size (Function.update σ i j) ≤ t.get size σ
     then 1 else 0

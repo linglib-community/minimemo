@@ -40,8 +40,8 @@ structure Domain (K : Type*) where
   val : ℕ → K
 
 /-- The first position at which a domain has the value `v`, or zero if it has none. -/
-def Domain.index {K : Type*} [DecidableEq K] (X : Domain K) (v : K) : ℕ :=
-  ((List.range X.size).find? fun j ↦ X.val j = v).getD 0
+def Domain.index {K : Type*} [BEq K] (X : Domain K) (v : K) : ℕ :=
+  ((List.range X.size).find? fun j ↦ X.val j == v).getD 0
 
 /-- An **interpretation** gives the values of each domain, the meaning of each operator, and the
 number of each rational literal. -/
