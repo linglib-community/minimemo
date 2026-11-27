@@ -323,16 +323,44 @@ def asks_uncertain[u: U, r: R]():
     return alice[carol.r_true] + 0 * u + 0 * r
 
 
+def level[u: U, r: R](t):
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true) * (
+            1 if t == 0 else level[u_said, r_true](t - 1)))
+    ]
+    listener: observes [speaker.u_said] is u
+    listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick])
+    return Pr[listener.r_pick == r]
+
+
+def level_one[u: U, r: R]():
+    return level[u, r](1)
+
+
+def fib[u: U, r: R](n):
+    return (1 if n < 2 else fib[u, r](n - 1) + fib[u, r](n - 2)) + 0 * u + 0 * r
+
+
+def halving[u: U, r: R](t, w):
+    speaker: knows(r)
+    speaker: chooses(u_said in U, wpp=1 + w * denotes(u_said, r) * (
+        1 if t <= 0 else halving[u_said, r](t - 1, w / 2)))
+    return Pr[speaker.u_said == u]
+
+
 # A model comes after the models that it refers to.
 MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
           weighted, tempered, observes_that, observes_event, variance, chooses_two, forgets,
           maximize, snapshot, boolean_sum, imagines, known_expectation, repeated,
           three_deep, two_observers, observes_agent, observes_two, spellings, arithmetic,
           forgets_after_observing, snapshot_then_observes, event_in_thinks, nested_imagine,
-          uncertain_weight, observes_known, wrong_domain, unknown_choice, asks_uncertain]
+          uncertain_weight, observes_known, wrong_domain, unknown_choice, asks_uncertain,
+          level, level_one, fib, halving]
 
 # Parameter values for the comparison with memo.
-ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}
+ARGS = {"weighted": (0.5, 3), "tempered": (0.25,), "level": (2,), "fib": (6,),
+        "halving": (3, 0.5)}
 
 if __name__ == "__main__":
     for f in MODELS:
