@@ -58,10 +58,13 @@ rational and Lean evaluates the model.
 
 namespace Memo.PragmaticListener
 
-open NaiveListener (Agent Name Dom dom denotes count)
+open NaiveListener (Agent Name Dom domOf denotesOf countOf)
 
 /-- The probability that the naive listener gives the referent `r` at the utterance `u`. -/
-def naive (u r : ℚ) : ℚ := denotes u r / count u
+def naiveOf {K : Type} [Field K] [LinearOrder K] (u r : K) : K := denotesOf u r / countOf u
+
+/-- That probability with rational numbers. -/
+abbrev naive (u r : ℚ) : ℚ := naiveOf u r
 
 /-- The function `naive` gives the entries of the array of the naive listener. -/
 theorem rows_naive :
@@ -74,11 +77,15 @@ inductive Fn : ℕ → Type
   deriving DecidableEq
 
 /-- The meaning of the outside function. -/
-def call : {k : ℕ} → Fn k → (Fin k → ℚ) → ℚ
-  | _, .naive, v => naive (v 0) (v 1)
+def callOf (K : Type) [Field K] [LinearOrder K] : {k : ℕ} → Fn k → (Fin k → K) → K
+  | _, .naive, v => naiveOf (v 0) (v 1)
 
-/-- The interpretation of the model with rational numbers. -/
-def interp : Interp Dom Fn ℚ := .ofField dom call
+/-- The interpretation of the model in an ordered field. -/
+def interpOf (K : Type) [Field K] [LinearOrder K] : Interp Dom Fn K :=
+  .ofField (domOf K) (callOf K)
+
+/-- The interpretation with rational numbers, which Lean evaluates. -/
+abbrev interp : Interp Dom Fn ℚ := interpOf ℚ
 
 /-- The model of the pragmatic listener:
 ```
