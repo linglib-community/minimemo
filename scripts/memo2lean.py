@@ -65,6 +65,43 @@ def choice(who: str, name: str) -> str:
     return here if who == "self" else f".query .{ident(who)} ({here})"
 
 
+STATIC_BINARY = {Op.ADD: "+", Op.SUB: "-", Op.MUL: "*", Op.DIV: "/"}
+STATIC_TEST = {Op.EQ: "=", Op.NEQ: "≠", Op.LT: "<", Op.LTE: "≤", Op.GT: ">", Op.GTE: "≥"}
+
+
+def is_static(e) -> bool:
+    """Whether an expression depends only on the parameters of the model."""
+    match e:
+        case ELit():
+            return True
+        case EOp(args=args):
+            return all(is_static(a) for a in args)
+    return False
+
+
+def static(e) -> str:
+    """A number that depends only on the parameters of the model, as a rational number of Lean."""
+    match e:
+        case ELit(value=str(name)):
+            return ident(name)
+        case ELit(value=value):
+            q = Fraction(value)
+            return str(q.numerator) if q.denominator == 1 and q >= 0 else f"({q})"
+        case EOp(op=Op.NEG, args=[a]):
+            return f"(-{static(a)})"
+        case EOp(op=op, args=[a, b]) if op in STATIC_BINARY:
+            return f"({static(a)} {STATIC_BINARY[op]} {static(b)})"
+    raise Unsupported("an argument of a model reference that is not arithmetic on parameters")
+
+
+def static_test(e) -> str:
+    """A test that depends only on the parameters of the model, as a proposition of Lean."""
+    match e:
+        case EOp(op=op, args=[a, b]) if op in STATIC_TEST:
+            return f"{static(a)} {STATIC_TEST[op]} {static(b)}"
+    raise Unsupported("a test on parameters that is not a comparison")
+
+
 def prim(name: str, args: list[str]) -> str:
     """An operator of memo applied to expressions."""
     return f".prim {name} ![{', '.join(args)}]"
@@ -95,6 +132,9 @@ def expr(e) -> str:
             return expr(a)
         case EOp(op=op, args=[a]) if op in UNARY:
             return prim("." + UNARY[op], [expr(a)])
+        case EOp(op=Op.ITE, args=[c, a, b]) if is_static(c):
+            # memo decides a test on parameters when it builds the model, so only one branch exists
+            return f"(if {static_test(c)} then {expr(a)} else {expr(b)})"
         case EOp(op=Op.ITE, args=[c, a, b]):
             return prim(".ite", [expr(c), expr(a), expr(b)])
         case EOp(op=Op.ADD, args=[a, b]) if is_boolean(a) and is_boolean(b):
@@ -108,10 +148,7 @@ def expr(e) -> str:
         case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
             return call(ident(name), [expr(a) for a in args])
         case EMemo(name=name, args=args, ids=ids, kwargs=kwargs) if not kwargs:
-            given = "".join(f" {lit(a.value)[5:]}" for a in args if isinstance(a, ELit))
-            if given.count(" ") != len(args):
-                raise Unsupported("a model reference whose arguments are not parameters or numbers")
-            head = ident(name + "_ref") + given
+            head = ident(name + "_ref") + "".join(f" {static(a)}" for a in args)
             return call(head, [choice(who, c) for (_, who, c) in ids])
         case EImagine(do=do, then=then):
             return f".imagine ({stmts(do)}) ({expr(then)})"

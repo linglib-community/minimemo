@@ -127,31 +127,25 @@ def main() -> int:
                  f"([{rows}] : List (List ℚ × ℚ))).getD 0", ""]
     lean += [model(f) for f in raw]
     # the meaning of the outside functions. A reference to a model reads the array of that model,
-    # which is computed with the meaning of the references to the models before it.
-    lean.append("def call0 : {k : ℕ} → Fn k → (Fin k → ℚ) → ℚ")
-    for name, slots in calls.items():
-        applied = " ".join(f"(v {i})" for i in range(len(slots)))
-        lean.append(f"  | _, .{ident(name)}, v => {ident(name)} {applied}")
-    if referenced or not calls:
-        lean.append("  | _, _, _ => 0")
-    lean.append("")
-    last = "call0"
-    for n, f in enumerate(g for g in raw if g.__name__ in referenced):
-        name = f.__name__
-        ps = " ".join(map(ident, parsed[name][0].static_parameters))
-        m = f"({ident(name)} {ps})" if ps else ident(name)
-        at = "0"
-        for i, d in enumerate(axes_of(name)):
-            at = f"({at}) * {len(values[d])} + (dom .{d}).index (v {i})"
-        table = ident(name + "_table")
-        lean += [f"def {table}{f' ({ps} : ℚ)' if ps else ''} : Array ℚ :=",
-                 f"  ((Model.entries (.ofField dom {last}) {m}).getD []).toArray",
-                 f"def call{n + 1} : {{k : ℕ}} → Fn k → (Fin k → ℚ) → ℚ",
-                 f"  | _, .{ident(name + '_ref')}{' ' + ps if ps else ''}, v => "
-                 f"({table}{' ' + ps if ps else ''}).getD ({at}) 0",
-                 f"  | _, f, v => {last} f v", ""]
-        last = f"call{n + 1}"
-    lean += [f"def interp : Interp Dom Fn ℚ := .ofField dom {last}", ""]
+    # which is computed once for each place where the reference stands. A model may refer to
+    # itself with other parameters, as in memo, so the meaning is defined by recursion.
+    if calls or referenced:
+        lean.append("partial def call : {k : ℕ} → Fn k → (Fin k → ℚ) → ℚ")
+        for name, slots in calls.items():
+            applied = " ".join(f"(v {i})" for i in range(len(slots)))
+            lean.append(f"  | _, .{ident(name)} => fun v ↦ {ident(name)} {applied}")
+        for name in referenced:
+            ps = " ".join(map(ident, parsed[name][0].static_parameters))
+            m = f"({ident(name)} {ps})" if ps else ident(name)
+            at = "0"
+            for i, d in enumerate(axes_of(name)):
+                at = f"({at}) * {len(values[d])} + (dom .{d}).index (v {i})"
+            lean += [f"  | _, .{ident(name + '_ref')}{' ' + ps if ps else ''} =>",
+                     f"    let table := ((Model.entries (.ofField dom call) {m}).getD []).toArray",
+                     f"    fun v ↦ table.getD ({at}) 0"]
+    else:
+        lean.append("def call : {k : ℕ} → Fn k → (Fin k → ℚ) → ℚ := fun f _ ↦ nomatch f")
+    lean += ["", "def interp : Interp Dom Fn ℚ := .ofField dom call", ""]
     args_of = getattr(examples, "ARGS", {})
     for f in raw:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
