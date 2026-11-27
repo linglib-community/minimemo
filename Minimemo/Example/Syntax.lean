@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Notation
+public import Minimemo.Syntax.Notation
 public import Minimemo.Example.NaiveListener
 
 /-!

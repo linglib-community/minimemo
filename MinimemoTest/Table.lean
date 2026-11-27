@@ -1,4 +1,4 @@
-import Minimemo.Table
+import Minimemo.Table.Basic
 import Mathlib.Algebra.Order.Field.Rat
 
 open Memo Memo.Table

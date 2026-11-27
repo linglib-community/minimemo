@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Program
-public import Minimemo.Syntax
+public import Minimemo.Program.Basic
+public import Minimemo.Syntax.Basic
 
 /-!
 # From a model to a program
@@ -33,7 +33,6 @@ through these links.
 * `Memo.Stmt.steps dom s S g`: the scope after the statement `s`, with its steps added to
   `g`.
 * `Memo.Model.program dom M`: the program of the model `M`, if memo accepts the model.
-* `Memo.Model.size dom M`: the size of each choice of the model `M`.
 * `Memo.Model.entries dom M`: the entries of the array of `M`, in row-major order.
 * `Memo.Model.rows dom M`: the same entries, as rows along the last axis.
 -/
@@ -89,14 +88,17 @@ namespace Scope
 def certain (S : Scope A N D) : List ℕ :=
   S.entries.filterMap fun e ↦ if e.2.certain then some e.2.index else none
 
-/-- The choices that the mind is uncertain of, each with its size. -/
-def uncertain (dom : D → Domain K) (S : Scope A N D) : List (ℕ × ℕ) :=
-  (S.entries.filterMap fun e ↦
-    if e.2.certain then none else some (e.2.index, (dom e.2.dom).size)).dedup
+/-- The choices that the mind is uncertain of, each once. -/
+def uncertain (S : Scope A N D) : List ℕ :=
+  (S.entries.filterMap fun e ↦ if e.2.certain then none else some e.2.index).dedup
 
 /-- The scope with the choice at `a` set to `e`. -/
 def insert (S : Scope A N D) (a : Ref A × N) (e : Entry D) : Scope A N D :=
   { S with entries := (a, e) :: S.entries.filter fun p ↦ p.1 ≠ a }
+
+/-- The scope with the choices `xs` as the mind's own, with the numbers from `n`. -/
+def own (S : Scope A N D) (xs : List (N × D)) (n : ℕ) : Scope A N D :=
+  xs.zipIdx.foldl (fun S p ↦ S.insert (.self, p.1.1) ⟨n + p.2, p.1.2, true, false⟩) S
 
 /-- The scope without the choices at the addresses in `as`. -/
 def erase (S : Scope A N D) (as : List (Ref A × N)) : Scope A N D :=
@@ -142,6 +144,22 @@ def Stmt.sizes : Stmt A N D K → List ℕ
 
 end
 
+/-- The scope and the steps after the agent `α` makes the choices `xs` together, with the numbers
+from the next free one. The term `r` is the weight, translated in the scope in which `α` has the
+choices as its own; `wrap` is applied to it; and `extra` choices are made inside it. -/
+def choose (S : Scope A N D) (g : Gen K) (α : A) (xs : List (N × D)) (wrap : Term K → Term K)
+    (extra : ℕ) (r : Option (Term K × List ℕ)) : Option (Scope A N D × Gen K) := do
+  let Sα := S.agent α
+  let Sα' := Sα.own xs g.next
+  let (t, deps) ← r
+  if deps.all (· ∈ Sα'.certain) ∧ xs.all fun p ↦ (Sα.entries.lookup (.self, p.1)).isNone then
+    let S' := xs.zipIdx.foldl
+      (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
+    let (g', w) := g.push
+      (.chooses S.table (xs.zipIdx.map fun p ↦ g.next + p.2) (.rename Sα'.links (wrap t)))
+    some ({ S'.setAgent α Sα' with table := w }, { g' with next := g.next + xs.length + extra })
+  else none
+
 mutual
 
 /-- The **term of an expression** in a scope, with the choices that it depends on. -/
@@ -155,7 +173,7 @@ def Expr.term (e : Expr A N D K) (S : Scope A N D) (g : Gen K) : Option (Term K 
       (.op f fun i ↦ (ts i).1, ((List.finRange _).flatMap fun i ↦ (ts i).2).dedup)
   | .choice x =>
     (S.entries.lookup (.self, x)).map fun c ↦
-      (.val c.index (dom c.dom).size (dom c.dom).val, [c.index])
+      (.val c.index (dom c.dom).val, [c.index])
   | .query α e => do
     let Sα ← S.agents α
     let (t, deps) ← Expr.term e Sα g
@@ -164,7 +182,7 @@ def Expr.term (e : Expr A N D K) (S : Scope A N D) (g : Gen K) : Option (Term K 
   | .expect e => do
     let (t, deps) ← Expr.term e S g
     if deps.all (· ∈ S.certain) then some (t, deps)
-    else some (.expect S.table (S.uncertain dom) t, S.certain)
+    else some (.expect S.table S.uncertain t, S.certain)
   | .imagine s e => do
     let (S', g') ← Stmt.steps s S g
     let (t, deps) ← Expr.term e S' g'
@@ -183,38 +201,15 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
   | .thinks α s => do
     let (Sα, g') ← Stmt.steps s (S.agent α) g
     some (S.setAgent α Sα, g')
-  | .chooses α x X e => do
-    let Sα := S.agent α
-    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true, false⟩
-    let (t, deps) ← Expr.term e Sα' { g with next := g.next + 1 }
-    if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
-      let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)] (.rename Sα'.links t))
-      some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
-        { g' with next := g.next + 1 + (Expr.sizes dom e).length })
-    else none
-  | .choosesMax α x X e => do
-    let Sα := S.agent α
-    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true, false⟩
-    let (t, deps) ← Expr.term e Sα' { g with next := g.next + 1 }
-    if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
-      let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)]
-        (.rename Sα'.links (.best g.next (dom X).size t)))
-      some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
-        { g' with next := g.next + 1 + (Expr.sizes dom e).length })
-    else none
-  | .choosesMany α xs e => do
-    let Sα := S.agent α
-    let Sα' := xs.zipIdx.foldl
-      (fun S p ↦ S.insert (.self, p.1.1) ⟨g.next + p.2, p.1.2, true, false⟩) Sα
-    let (t, deps) ← Expr.term e Sα' { g with next := g.next + xs.length }
-    if deps.all (· ∈ Sα'.certain) ∧ xs.all fun p ↦ (Sα.entries.lookup (.self, p.1)).isNone then
-      let S' := xs.zipIdx.foldl
-        (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
-      let (g', w) := g.push (.chooses S.table
-        (xs.zipIdx.map fun p ↦ (g.next + p.2, (dom p.1.2).size)) (.rename Sα'.links t))
-      some ({ S'.setAgent α Sα' with table := w },
-        { g' with next := g.next + xs.length + (Expr.sizes dom e).length })
-    else none
+  | .chooses α x X e =>
+    choose S g α [(x, X)] id (Expr.sizes dom e).length
+      (Expr.term e ((S.agent α).own [(x, X)] g.next) { g with next := g.next + 1 })
+  | .choosesMax α x X e =>
+    choose S g α [(x, X)] (.best g.next) (Expr.sizes dom e).length
+      (Expr.term e ((S.agent α).own [(x, X)] g.next) { g with next := g.next + 1 })
+  | .choosesMany α xs e =>
+    choose S g α xs id (Expr.sizes dom e).length
+      (Expr.term e ((S.agent α).own xs g.next) { g with next := g.next + xs.length })
   | .observes α β x γ y => do
     let Sα ← S.agents α
     let c ← S.entries.lookup (γ, y)
@@ -224,14 +219,14 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
       let Sα' : Scope A N D :=
         { Sα.insert (.agent β, x) { cα with certain := true, given := true } with
           links := (cα.index, c.index) :: Sα.links }
-      let (g', w) := g.push (.observes Sα.table (Sα'.uncertain dom))
+      let (g', w) := g.push (.observes Sα.table Sα'.uncertain)
       some (S.setAgent α { Sα' with table := w }, g')
     else none
   | .observesEvent α e => do
     let Sα := S.agent α
     let (t, _) ← Expr.term e Sα g
     let (g', w) := g.push (.weighs Sα.table t)
-    let (g'', w') := g'.push (.observes w (Sα.uncertain dom))
+    let (g'', w') := g'.push (.observes w Sα.uncertain)
     some (S.setAgent α { Sα with table := w' }, { g'' with next := g.next + (Expr.sizes dom e).length })
   | .knows α γ y => do
     let c ← S.entries.lookup (γ, y)
@@ -254,8 +249,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     let Sα ← S.agents α
     if xs.all fun x ↦ (Sα.entries.lookup (.self, x)).any (!·.given) ∧
         (S.entries.lookup (.agent α, x)).isSome then
-      let over := (xs.filterMap fun x ↦
-        (S.entries.lookup (.agent α, x)).map fun c ↦ (c.index, (dom c.dom).size)).dedup
+      let over := (xs.filterMap fun x ↦ (S.entries.lookup (.agent α, x)).map (·.index)).dedup
       let (g', w) := g.push (.forgets S.table over)
       some ({ (S.erase (xs.map fun x ↦ (.agent α, x))).setAgent α
           (Sα.erase (xs.map fun x ↦ (.self, x))) with table := w }, g')
@@ -273,13 +267,9 @@ def Model.program (M : Model A N D K) : Option (Program K) := do
   let (S, g) ← Stmt.steps dom M.body S₀ ⟨k, #[]⟩
   let (t, deps) ← Expr.term dom M.ret S g
   if deps.all (· < k) then
-    some ⟨g.steps.toList, t, M.axes.zipIdx.map fun p ↦ (p.2, (dom p.1.2).size)⟩
+    some ⟨(M.axes.map fun p ↦ (dom p.2).size) ++ Stmt.sizes dom M.body ++ Expr.sizes dom M.ret,
+      g.steps.toList, t, List.range k⟩
   else none
-
-/-- The size of each choice of a model: the sizes of its axes, then of the choices of its
-statement, then of the choices that its expression imagines, in the order of their numbers. -/
-def Model.size (M : Model A N D K) (i : ℕ) : ℕ :=
-  ((M.axes.map fun p ↦ (dom p.2).size) ++ Stmt.sizes dom M.body ++ Expr.sizes dom M.ret).getD i 0
 
 /-- The entries of the array of a model, in row-major order. -/
 def Model.entries [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List K) :=
