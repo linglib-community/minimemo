@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
+      - name: the implementation does not import the theory
+        run: "! grep -rn 'import MinimemoTheory' Minimemo Minimemo.lean"
+      - name: run the tests
+        run: lake test
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

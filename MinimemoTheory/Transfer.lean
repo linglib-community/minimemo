@@ -5,8 +5,10 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Term.Basic
-public import Minimemo.Table.Map
+public import Minimemo.Term
+public import Minimemo.Model
+public import MinimemoTheory.Interp
+public import MinimemoTheory.Table.Map
 
 /-!
 # A program in two fields of numbers
@@ -27,6 +29,7 @@ numbers.
 
 * `Memo.Term.eval_map`: the table of a term.
 * `Memo.Program.entries_map`, `Memo.Program.rows_map`: the array of a program.
+* `Memo.Model.rows_map`: the array of a model.
 -/
 
 @[expose] public section
@@ -108,5 +111,17 @@ theorem Program.rows_map (p : Program D F) : p.rows J = (p.rows I).map (List.map
   cases p.axes.getLast? <;> simp
 
 end Eval
+
+variable {A N : Type u} [DecidableEq A] [DecidableEq N] [DecidableEq D] [Semifield K]
+  [LinearOrder K] [Semifield L] [LinearOrder L] {I : Interp D F K} {J : Interp D F L}
+
+/-- The rows of the array of a model in two compatible interpretations: those in the second are
+the images of those in the first. -/
+theorem Model.rows_map {φ : K →+* L} (hφ : StrictMono φ) (h : Interp.Compat φ I J) (M : Model A N D F) :
+    Model.rows J M = (Model.rows I M).map (List.map (List.map φ)) := by
+  simp only [Model.rows, Option.map_map]
+  congr 1
+  funext p
+  exact p.rows_map hφ h
 
 end Memo

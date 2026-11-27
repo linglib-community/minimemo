@@ -1,4 +1,4 @@
-import Minimemo.Example.NaiveListener
+import MinimemoTheory.Example.NaiveListener
 open Memo Memo.NaiveListener
 
 #eval Model.rows interp model

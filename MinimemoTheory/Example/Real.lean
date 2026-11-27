@@ -5,7 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Example.NaiveListener
+public import MinimemoTheory.Example.NaiveListener
+public import MinimemoTheory.Transfer
 public import Mathlib.Basic.Real.Basic
 public import Mathlib.Data.Rat.Cast.Order
 public import Mathlib.Tactic.NormNum
@@ -69,7 +70,7 @@ theorem rows_real :
             [0,   1/2, 1/2]] := by
   have hq : Model.rows interp model =
       some [[1/2, 1/2, 0], [0, 0, 1], [1, 0, 0], [0, 1/2, 1/2]] := by decide +kernel
-  rw [Model.rows_map interp Rat.cast_strictMono compat, hq]
+  rw [Model.rows_map Rat.cast_strictMono compat, hq]
   norm_num
 
 end Memo.NaiveListener

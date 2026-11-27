@@ -6,7 +6,6 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Compile
-public import Minimemo.Term.Transfer
 
 /-!
 # The array of a model
@@ -17,10 +16,6 @@ This file defines the array that a model returns in an interpretation.
 
 * `Memo.Model.entries I M`: the entries of the array of `M`, in row-major order.
 * `Memo.Model.rows I M`: the same entries, as rows along the last axis.
-
-## Main results
-
-* `Memo.Model.rows_map`: the rows of a model in two compatible interpretations.
 -/
 
 @[expose] public section
@@ -38,15 +33,5 @@ def Model.entries (M : Model A N D F) : Option (List K) := (Model.program M).map
 
 /-- The rows of the array of a model, along its last axis. -/
 def Model.rows (M : Model A N D F) : Option (List (List K)) := (Model.program M).map (·.rows I)
-
-/-- The rows of the array of a model in two compatible interpretations: those in the second are
-the images of those in the first. -/
-theorem Model.rows_map {L : Type u} [Semifield L] [LinearOrder L] {J : Interp D F L}
-    {φ : K →+* L} (hφ : StrictMono φ) (h : Interp.Compat φ I J) (M : Model A N D F) :
-    Model.rows J M = (Model.rows I M).map (List.map (List.map φ)) := by
-  simp only [Model.rows, Option.map_map]
-  congr 1
-  funext p
-  exact p.rows_map hφ h
 
 end Memo

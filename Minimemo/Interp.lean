@@ -8,7 +8,6 @@ module
 public import Minimemo.Syntax
 public import Mathlib.Algebra.Order.Field.Basic
 public import Mathlib.Algebra.Order.Ring.Abs
-public import Mathlib.Data.Rat.Cast.Defs
 
 /-!
 # Interpretations
@@ -19,23 +18,12 @@ A model has no numbers but rational literals. An interpretation gives the values
 the meaning of each operator, and the number of each literal. `Memo.Interp.ofField` is the
 interpretation in an ordered field, in which the operators of memo have their usual meaning.
 
-Two interpretations are compatible along a map `φ` of numbers if their domains have the same
-sizes, and the values, the operators and the literals of the second are the images of those of the
-first. The interpretations in two ordered fields are compatible along an embedding that preserves
-the order.
-
 ## Main definitions
 
 * `Memo.Domain K`: a finite sequence of numbers, the values that a choice can take.
 * `Memo.Interp D F K`: an interpretation of domains, operators and literals in the numbers `K`.
 * `Memo.Prim.eval`: the meaning of the operators of memo in an ordered field.
 * `Memo.Interp.ofField dom call`: the interpretation in an ordered field.
-* `Memo.Interp.Arith I`: the interpretation `I` gives the product and the quotient their meaning.
-* `Memo.Interp.Compat φ I J`: the interpretations `I` and `J` are compatible along `φ`.
-
-## Main results
-
-* `Memo.Interp.compat_ofField`: the interpretations in two ordered fields are compatible.
 -/
 
 @[expose] public section
@@ -92,39 +80,5 @@ def Interp.ofField {D : Type u} {F : ℕ → Type u} {K : Type u} [Field K] [Lin
     | .inl p => p.eval
     | .inr f => call f
   lit q := q
-
-variable {D : Type u} {F : ℕ → Type u} {K L : Type u}
-
-/-- An interpretation gives the product and the quotient their meaning. -/
-structure Interp.Arith [Semifield K] (J : Interp D F K) : Prop where
-  mul : ∀ x : Fin 2 → K, J.op (.inl .mul) x = x 0 * x 1
-  div : ∀ x : Fin 2 → K, J.op (.inl .div) x = x 0 / x 1
-
-/-- Two interpretations are **compatible** along `φ` if their domains have the same sizes, and the
-values, the operators and the literals of the second are the images of those of the first. -/
-structure Interp.Compat (φ : K → L) (I : Interp D F K) (J : Interp D F L) : Prop where
-  size : ∀ d, (J.dom d).size = (I.dom d).size
-  val : ∀ d j, (J.dom d).val j = φ ((I.dom d).val j)
-  op : ∀ {k : ℕ} (o : Prim k ⊕ F k) (x : Fin k → K), J.op o (fun i ↦ φ (x i)) = φ (I.op o x)
-  lit : ∀ q, J.lit q = φ (I.lit q)
-
-/-- The interpretations in two ordered fields are compatible along an embedding that preserves the
-order, if the domains and the outside functions are. -/
-theorem Interp.compat_ofField [Field K] [LinearOrder K] [IsStrictOrderedRing K] [Field L]
-    [LinearOrder L] [IsStrictOrderedRing L] {φ : K →+* L} (hφ : StrictMono φ)
-    {dom : D → Domain K} {dom' : D → Domain L} {call : {k : ℕ} → F k → (Fin k → K) → K}
-    {call' : {k : ℕ} → F k → (Fin k → L) → L} (hsize : ∀ d, (dom' d).size = (dom d).size)
-    (hval : ∀ d j, (dom' d).val j = φ ((dom d).val j))
-    (hcall : ∀ {k : ℕ} (f : F k) (x : Fin k → K), call' f (fun i ↦ φ (x i)) = φ (call f x)) :
-    Interp.Compat φ (.ofField dom call) (.ofField dom' call') where
-  size := hsize
-  val := hval
-  lit q := (map_ratCast φ q).symm
-  op o x := by
-    rcases o with p | f
-    · cases p <;>
-        simp [Interp.ofField, Prim.eval, hφ.injective.eq_iff, hφ.lt_iff_lt, hφ.le_iff_le,
-          apply_ite φ, abs_eq_max_neg, hφ.monotone.map_max]
-    · exact hcall f x
 
 end Memo

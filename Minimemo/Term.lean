@@ -6,7 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Interp
-public import Minimemo.Table.Basic
+public import Minimemo.Table
 
 /-!
 # Terms

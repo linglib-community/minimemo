@@ -14,6 +14,10 @@ Run a model:
 
     lake env lean examples/naive.lean
 
+Run tests:
+
+    lake test
+
 Translate a memo model (requires memo):
 
     python scripts/examples.py

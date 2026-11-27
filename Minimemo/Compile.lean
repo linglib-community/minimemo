@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Term.Basic
+public import Minimemo.Term
 
 /-!
 # From a model to a program

@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Bridge.Term
-public import Minimemo.Belief.Measure
+public import MinimemoTheory.Bridge.Term
+public import MinimemoTheory.Belief.Measure
 
 /-!
 # Terms as operations on measures

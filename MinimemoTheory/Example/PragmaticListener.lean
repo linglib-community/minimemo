@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Example.NaiveListener
+public import MinimemoTheory.Example.NaiveListener
 public import Mathlib.Tactic.NormNum
 public import Mathlib.Tactic.Positivity
 

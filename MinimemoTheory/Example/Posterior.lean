@@ -6,8 +6,8 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Model
-public import Minimemo.Bridge.Measure
-public import Minimemo.Example.NaiveListener
+public import MinimemoTheory.Bridge.Measure
+public import MinimemoTheory.Example.NaiveListener
 
 /-!
 # The belief of a listener is a posterior

@@ -6,7 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Notation
-public import Minimemo.Example.NaiveListener
+public import MinimemoTheory.Example.NaiveListener
 
 /-!
 # A model in the syntax of memo

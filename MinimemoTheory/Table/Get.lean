@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Table.Basic
+public import Minimemo.Table
 public import Mathlib.Algebra.BigOperators.Group.List.Basic
 public import Mathlib.Data.List.Forall2
 public import Mathlib.Tactic.Ring

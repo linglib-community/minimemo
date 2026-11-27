@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Belief.Basic
-public import Minimemo.FiniteMeasure
+public import MinimemoTheory.Belief.Basic
+public import MinimemoTheory.FiniteMeasure
 public import Mathlib.MeasureTheory.MeasurableSpace.Embedding
 public import Mathlib.Probability.ConditionalProbability
 public import Mathlib.Probability.Kernel.Composition.MeasureCompProd
