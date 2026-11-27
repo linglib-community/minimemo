@@ -19,7 +19,8 @@ each with its number and whether the agent is certain of it, and the scopes of t
 this agent has a model of. It computes no number. It checks that every expression is used where
 the agent can compute it, and it writes the steps of the program.
 
-A choice that an agent imagines has its own number. When the agent observes it, the agent becomes
+Every choice has its own number: one that an agent makes, one that an agent thinks another agent
+makes, and one that is made only inside an `imagine`. When the agent observes it, the agent becomes
 certain of that choice, and the scope records a link from it to the choice that was observed. A
 term that leaves the agent's mind, in a query or as the weight of the agent's choice, is read
 through these links.
@@ -117,6 +118,26 @@ end Scope
 def allSome {k : ℕ} {β : Type*} (o : Fin k → Option β) : Option (Fin k → β) :=
   if h : ∀ i, (o i).isSome then some fun i ↦ (o i).get (h i) else none
 
+mutual
+
+/-- The number of choices that an expression imagines. -/
+def Expr.fresh : Expr A N D K → ℕ
+  | .lit _ | .choice _ => 0
+  | .op _ es => ((List.finRange _).map fun i ↦ Expr.fresh (es i)).sum
+  | .query _ e | .expect e => Expr.fresh e
+  | .imagine s e => Stmt.fresh s + Expr.fresh e
+
+/-- The number of choices that a statement makes, with those that its expressions imagine. -/
+def Stmt.fresh : Stmt A N D K → ℕ
+  | .chooses _ _ _ e | .choosesMax _ _ _ e => 1 + Expr.fresh e
+  | .choosesMany _ xs e => xs.length + Expr.fresh e
+  | .observesEvent _ e => Expr.fresh e
+  | .thinks _ s => Stmt.fresh s
+  | .seq s₁ s₂ => Stmt.fresh s₁ + Stmt.fresh s₂
+  | .observes .. | .knows .. | .snapshot .. | .forgets .. | .pass => 0
+
+end
+
 variable (dom : D → Domain K)
 
 mutual
@@ -126,7 +147,9 @@ def Expr.term (e : Expr A N D K) (S : Scope A N D) (g : Gen K) : Option (Term K 
   match e with
   | .lit r => some (.lit r, [])
   | .op f es =>
-    (allSome fun i ↦ Expr.term (es i) S g).map fun ts ↦
+    (allSome fun i ↦ Expr.term (es i) S
+      { g with next := g.next + ((List.finRange _).map fun j ↦
+        if j < i then Expr.fresh (es j) else 0).sum }).map fun ts ↦
       (.op f fun i ↦ (ts i).1, ((List.finRange _).flatMap fun i ↦ (ts i).2).dedup)
   | .choice x =>
     (S.entries.lookup (.self, x)).map fun c ↦
@@ -165,7 +188,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
       let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)] (.rename Sα'.links t))
       some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
-        { g' with next := g.next + 1 })
+        { g' with next := g.next + 1 + Expr.fresh e })
     else none
   | .choosesMax α x X e => do
     let Sα := S.agent α
@@ -175,7 +198,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
       let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)]
         (.rename Sα'.links (.best g.next (dom X).size t)))
       some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
-        { g' with next := g.next + 1 })
+        { g' with next := g.next + 1 + Expr.fresh e })
     else none
   | .choosesMany α xs e => do
     let Sα := S.agent α
@@ -187,7 +210,8 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
         (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
       let (g', w) := g.push (.chooses S.table
         (xs.zipIdx.map fun p ↦ (g.next + p.2, (dom p.1.2).size)) (.rename Sα'.links t))
-      some ({ S'.setAgent α Sα' with table := w }, { g' with next := g.next + xs.length })
+      some ({ S'.setAgent α Sα' with table := w },
+        { g' with next := g.next + xs.length + Expr.fresh e })
     else none
   | .observes α β x γ y => do
     let Sα ← S.agents α
@@ -206,7 +230,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     let (t, _) ← Expr.term e Sα g
     let (g', w) := g.push (.weighs Sα.table t)
     let (g'', w') := g'.push (.observes w (Sα.uncertain dom))
-    some (S.setAgent α { Sα with table := w' }, g'')
+    some (S.setAgent α { Sα with table := w' }, { g'' with next := g.next + Expr.fresh e })
   | .knows α γ y => do
     let c ← S.entries.lookup (γ, y)
     let Sα := S.agent α

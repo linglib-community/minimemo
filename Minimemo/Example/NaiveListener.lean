@@ -6,6 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Compile
+public import Minimemo.Program.Sized
 public import Mathlib.Algebra.Order.Field.Rat
 
 /-!
@@ -40,6 +41,8 @@ speakers choose in opposite orders. The listeners return the same array.
 * `Memo.NaiveListener.rows_eq_denotes_div_count`: the entry at an utterance and a referent is the
   denotation there divided by the number of referents that the utterance describes.
 * `Memo.NaiveListener.rows_utteranceFirst`: the two models return the same array.
+* `Memo.NaiveListener.program_sized`: the program of the model is sized, so every table that it
+  computes is a factor on the choices of the model.
 
 ## Implementation notes
 
@@ -110,6 +113,11 @@ def model : Model Agent Name Dom ℚ where
     .chooses .listener .rPick .R
       (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
   ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
+
+/-- The program of the model is sized, with the sizes that it gives its own choices: every table
+that it computes is sized, and each of its steps acts on beliefs as its statement does. -/
+theorem program_sized : (Model.program dom model).any (fun p ↦ p.sized p.sizes) = true := by
+  decide +kernel
 
 /-- The number of referents that the utterance `u` describes. -/
 def count (u : ℚ) : ℚ := ∑ t ∈ Finset.range 3, denotes u t

@@ -98,7 +98,7 @@ def main() -> int:
         if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
-    lean = ["import Minimemo.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
+    lean = ["import Minimemo.Compile", "import Minimemo.Program.Sized", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
@@ -150,6 +150,11 @@ def main() -> int:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
         m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
         lean.append(f"#eval Model.entries dom {m}")
+    lean.append('#eval "sized"')
+    for f in raw:  # each program is sized, with the sizes that it gives its own choices
+        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
+        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
+        lean.append(f"#eval (Model.program dom {m}).all fun p ↦ p.sized p.sizes")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
 
@@ -157,7 +162,9 @@ def main() -> int:
     if run.returncode != 0:
         print(run.stdout + run.stderr)
         return 1
-    results = re.findall(r"some\s*\[(.*?)\]|(none)", run.stdout, re.S)
+    arrays, _, checks = run.stdout.partition('"sized"')
+    results = re.findall(r"some\s*\[(.*?)\]|(none)", arrays, re.S)
+    sized = re.findall(r"true|false", checks)
 
     scope = vars(examples)
     scope["memo"] = memo
@@ -186,7 +193,10 @@ def main() -> int:
             print("   memo:", [round(float(w), 5) for w in want])
             print("   lean:", [round(g, 5) for g in got])
     print(f"{len(raw) - failed} of {len(raw)} models agree")
-    return 1 if failed else 0
+    unsized = [f.__name__ for f, ok in zip(raw, sized, strict=True) if ok != "true"]
+    print(f"{len(raw) - len(unsized)} of {len(raw)} programs are sized" +
+          "".join(f"\n   not sized: {name}" for name in unsized))
+    return 1 if failed or unsized else 0
 
 
 if __name__ == "__main__":
