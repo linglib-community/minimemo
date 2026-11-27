@@ -17,9 +17,9 @@ and proves from the program of the model that the belief of the listener is the 
 probability theory.
 
 A listener thinks that a speaker chooses a referent uniformly and then an utterance with weight
-`w u r`, and observes the utterance. The program of this model has three steps. After the first
-two, the belief of the listener is the joint measure of the referent and the utterance: the
-measure of the referent with the kernel of the speaker. After the third it is that joint measure
+`w u r`, and observes the utterance. The program of this model adds five tables. After the two
+choices, the belief of the listener is the joint measure of the referent and the utterance: the
+measure of the referent with the kernel of the speaker. After the observation it is that joint measure
 conditioned on the utterance, as a measure on the referent.
 
 Nothing is evaluated: the domains and the weight are arbitrary, and the results follow from the
@@ -34,8 +34,7 @@ theorems about steps.
 
 ## Main results
 
-* `Memo.Posterior.steps_eq`, `Memo.Posterior.tables_eq`: the steps of the program of the model,
-  and its tables.
+* `Memo.Posterior.steps_eq`: the terms of the tables of the program of the model.
 * `Memo.Posterior.said_apply`: the weight of the utterance in the program is `w`.
 * `Memo.Posterior.measure_joint`: after the two choices, the belief of the listener is the joint
   measure of the referent and the utterance.
@@ -84,6 +83,8 @@ def interp : Interp Dom Fn ℝ≥0 where
   dom := dom
   op {k} o := match k, o with
     | _, .inr .w => fun v ↦ w (v 0) (v 1)
+    | _, .inl .mul => fun v ↦ v 0 * v 1
+    | _, .inl .div => fun v ↦ v 0 / v 1
     | _, .inl _ => fun _ ↦ 0
   lit q := (q : ℝ).toNNReal
 
@@ -92,51 +93,64 @@ utterance `3` that the listener thinks the speaker chooses. -/
 def size (i : ℕ) : ℕ :=
   ([(dom .U).size, (dom .R).size, (dom .R).size, (dom .U).size] : List ℕ).getD i 0
 
-/-- The steps of the program of the model. -/
-def steps : List (Step Dom Fn) := ((Model.program model).map (·.steps)).getD []
+theorem arith : (interp dom w).Arith := ⟨fun _ ↦ rfl, fun _ ↦ rfl⟩
 
-/-- The weight of the step `k`, if it is a choice. -/
-def weight (k : ℕ) : Term Dom Fn :=
-  match steps[k]? with
-  | some (.chooses _ _ t) => t
-  | _ => .lit 0
+/-- The terms of the tables of the program of the model. -/
+def steps : List (Term Dom Fn) := ((Model.program model).map (·.steps)).getD []
 
-/-- The program has three steps: the speaker's choice of the referent `2`, the speaker's choice of
-the utterance `3`, and the listener's observation, which leaves the referent uncertain. -/
+/-- The weight of the referent in the program: the table `1`. -/
+def one : Term Dom Fn := steps[0]?.getD (.lit 0)
+
+/-- The weight of the utterance in the program: the table `3`. -/
+def said : Term Dom Fn := steps[2]?.getD (.lit 0)
+
+/-- The program adds five tables: the weight of the referent, the belief after the speaker's
+choice of the referent `2`, the weight of the utterance, the belief after the speaker's choice of
+the utterance `3`, and the belief after the listener's observation, which leaves the referent
+uncertain. -/
 theorem steps_eq :
-    steps = [.chooses 0 [2] (weight 0), .chooses 1 [3] (weight 1),
-      .observes 2 [2]] := rfl
+    steps = [one, Term.chooses 0 [2] (.ref 1), said, Term.chooses 2 [3] (.ref 3),
+      Term.observes 4 [2]] := rfl
 
 theorem doms_eq : (Model.program model).map (·.doms) = some [.U, .R, .R, .U] := rfl
 
-/-- The tables after the listener thinks that the speaker chooses the referent. -/
+/-- The tables `0` to `3`: after the listener thinks that the speaker chooses the referent, with
+the weight of the utterance. -/
 def prior : Array (Table ℝ≥0) :=
-  Step.run (interp dom w) (size dom) #[.const 1] (.chooses 0 [2] (weight 0))
+  let W₁ := #[.const 1].push (one.eval (interp dom w) (size dom) #[.const 1])
+  let W₂ := W₁.push ((Term.chooses 0 [2] (.ref 1) : Term Dom Fn).eval (interp dom w) (size dom) W₁)
+  W₂.push (said.eval (interp dom w) (size dom) W₂)
 
-/-- The tables after the listener thinks that the speaker chooses the utterance. -/
+/-- The tables `0` to `4`: after the listener thinks that the speaker chooses the utterance. -/
 def thinks : Array (Table ℝ≥0) :=
-  Step.run (interp dom w) (size dom) (prior dom w) (.chooses 1 [3] (weight 1))
+  (prior dom w).push
+    ((Term.chooses 2 [3] (.ref 3) : Term Dom Fn).eval (interp dom w) (size dom) (prior dom w))
 
 /-- The table after the listener observes the utterance. -/
-def observes : Table ℝ≥0 := (Step.observes 2 [2]).table (interp dom w) (size dom) (thinks dom w)
+def observes : Table ℝ≥0 :=
+  (Term.observes 4 [2] : Term Dom Fn).eval (interp dom w) (size dom) (thinks dom w)
 
-/-- The tables of the program are the tables after the listener thinks, with the table after the
-listener observes. -/
-theorem tables_eq :
-    (steps).foldl (Step.run (interp dom w) (size dom)) #[.const 1] =
-      (thinks dom w).push (observes dom w) := rfl
+/-- The table that the program returns is computed from these tables. -/
+theorem table_eq (p : Program Dom Fn) (hp : Model.program model = some p) :
+    p.steps.foldl (fun W t ↦ W.push (t.eval (interp dom w) (size dom) W)) #[.const 1] =
+      (thinks dom w).push (observes dom w) := by
+  obtain rfl := Option.some.inj hp
+  rfl
 
 theorem sized_prior : ∀ x ∈ prior dom w, x.Sized (size dom) :=
-  sized_foldl_run [.chooses 0 [2] (weight 0)]
+  sized_push (sized_push (sized_push sized_one (Term.sized_eval _ _ sized_one))
+    (Term.sized_eval _ _ (sized_push sized_one (Term.sized_eval _ _ sized_one))))
+    (Term.sized_eval _ _ (sized_push (sized_push sized_one (Term.sized_eval _ _ sized_one))
+      (Term.sized_eval _ _ (sized_push sized_one (Term.sized_eval _ _ sized_one)))))
 
 theorem sized_thinks : ∀ x ∈ thinks dom w, x.Sized (size dom) :=
-  sized_foldl_run [.chooses 0 [2] (weight 0), .chooses 1 [3] (weight 1)]
+  sized_push (sized_prior dom w) (Term.sized_eval _ _ (sized_prior dom w))
 
 /-- The weight of the utterance in the program is `w` at the values of the utterance and of the
 referent. -/
 theorem said_apply {W : Array (Table ℝ≥0)} (hW : ∀ x ∈ W, x.Sized (size dom))
     (σ : ∀ i, Fin (size dom i)) :
-    Table.toFactor (size dom) ((weight 1).eval (interp dom w) (size dom) W) σ =
+    Table.toFactor (size dom) (said.eval (interp dom w) (size dom) W) σ =
       w ((dom .U).val (σ 3)) ((dom .R).val (σ 2)) := by
   show Table.toFactor (size dom)
     ((Term.rename [] (Term.op (.inr Fn.w) _)).eval (interp dom w) (size dom) W) σ = _
@@ -148,34 +162,42 @@ theorem said_apply {W : Array (Table ℝ≥0)} (hW : ∀ x ∈ W, x.Sized (size 
   rw [Term.toFactor_val, Term.toFactor_val]
   rfl
 
-/-- The table after the first choice has no variables: the referent is chosen uniformly. -/
-theorem vars_prior : ((prior dom w).getD 1 (.const 1)).vars = [] := rfl
+/-- The belief after the first choice has no variables: the referent is chosen uniformly. -/
+theorem vars_prior : ((prior dom w).getD 2 (.const 1)).vars = [] := rfl
 
 /-- After the two choices of the speaker, the belief of the listener is the joint measure of the
 referent and the utterance: the measure of the referent with the kernel of the speaker. -/
 theorem measure_joint (σ : ∀ i, Fin (size dom i)) :
-    (Table.toBelief (size dom) ({2} ∪ {3}) ((thinks dom w).getD 2 (.const 1))).measure σ =
-      ((Table.toBelief (size dom) {2} ((prior dom w).getD 1 (.const 1))).measure σ ⊗ₘ
+    (Table.toBelief (size dom) ({2} ∪ {3}) ((thinks dom w).getD 4 (.const 1))).measure σ =
+      ((Table.toBelief (size dom) {2} ((prior dom w).getD 2 (.const 1))).measure σ ⊗ₘ
         Kernel.ofFunOfCountable fun τ ↦
           ((Belief.choice 3 (Table.toFactor (size dom)
-            ((weight 1).eval (interp dom w) (size dom) (prior dom w)))).measure
+            ((Term.ref 3 : Term Dom Fn).eval (interp dom w) (size dom) (prior dom w)))).measure
               (Function.updateFinset σ {2} τ) :
             Measure (∀ j : ({3} : Finset ℕ), Fin (size dom j)))).map
         (Equiv.piFinsetUnion (fun i ↦ Fin (size dom i))
           (Finset.disjoint_singleton_right.2 (by decide : (3 : ℕ) ∉ ({2} : Finset ℕ)))) :=
-  Step.measure_chooses (sized_prior dom w) 1 {2} 3 (weight 1) (by decide)
+  Term.measure_chooses (sized_prior dom w) (arith dom w) 2 {2} 3 (.ref 3) (by decide)
     (by rw [vars_prior]; simp) σ
+
+/-- The weight in that kernel is the weight of the utterance, `w`. -/
+theorem ref_said (σ : ∀ i, Fin (size dom i)) :
+    Table.toFactor (size dom)
+        ((Term.ref 3 : Term Dom Fn).eval (interp dom w) (size dom) (prior dom w)) σ =
+      w ((dom .U).val (σ 3)) ((dom .R).val (σ 2)) :=
+  said_apply dom w (sized_push (sized_push sized_one (Term.sized_eval _ _ sized_one))
+    (Term.sized_eval _ _ (sized_push sized_one (Term.sized_eval _ _ sized_one)))) σ
 
 /-- After the observation, the belief of the listener is the joint measure conditioned on the
 utterance, as a measure on the referent. -/
 theorem measure_posterior (σ : ∀ i, Fin (size dom i)) :
     (Table.toBelief (size dom) (({2} ∪ {3} : Finset ℕ).erase 3) (observes dom w)).measure σ =
-      (((Table.toBelief (size dom) ({2} ∪ {3}) ((thinks dom w).getD 2 (.const 1))).measure σ)[|
+      (((Table.toBelief (size dom) ({2} ∪ {3}) ((thinks dom w).getD 4 (.const 1))).measure σ)[|
           {τ | τ ⟨3, by simp⟩ = σ 3}]).map
         (Finset.restrict₂ (π := fun i ↦ Fin (size dom i))
           (Finset.erase_subset 3 ({2} ∪ {3} : Finset ℕ))) :=
-  Step.measure_observes (sized_thinks dom w) 2 ({2} ∪ {3}) 3 [2] (List.nodup_singleton 2)
-    (by decide) (by decide) σ
+  Term.measure_observes (sized_thinks dom w) (arith dom w) 4 ({2} ∪ {3}) 3 [2]
+    (List.nodup_singleton 2) (by decide) (by decide) σ
 
 end
 

@@ -25,8 +25,7 @@ the same model with real numbers.
 ## Main results
 
 * `Memo.Table.get_map`: the image of a table has the images of its numbers.
-* `Memo.Table.map_mul`, `Memo.Table.map_div`, `Memo.Table.map_sumOver`, `Memo.Table.map_rename`,
-  `Memo.Table.map_best`, `Memo.Table.map_op`: the operations on tables commute with the image.
+* `Memo.Table.map_sumOver`, `Memo.Table.map_rename`, `Memo.Table.map_best`, `Memo.Table.map_op`: the operations on tables commute with the image.
 -/
 
 @[expose] public section
@@ -60,10 +59,6 @@ include h0
 /-- The image of a table has, at every assignment, the image of the number of the table. -/
 theorem get_map (t : Table K) (σ : ℕ → ℕ) : (t.map φ).get σ = φ (t.get σ) :=
   getD_map φ h0 _ _
-
-theorem map_map₂ {g : K → K → K} {g' : L → L → L} (hg : ∀ a b, g' (φ a) (φ b) = φ (g a b))
-    (s t : Table K) : map₂ g' (s.map φ) (t.map φ) = (map₂ g s t).map φ := by
-  simp only [map₂, map_ofFn, vars_map, get_map h0, hg]
 
 theorem map_rename (links : List (ℕ × ℕ)) (t : Table K) :
     (t.map φ).rename links = (t.rename links).map φ := by
@@ -129,12 +124,6 @@ end Add
 section Field
 
 variable [Semifield K] [Semifield L] (φ : K →+* L)
-
-theorem map_mul (s t : Table K) : s.map φ * t.map φ = (s * t).map φ :=
-  map_map₂ (map_zero φ) (fun a b ↦ (_root_.map_mul φ a b).symm) s t
-
-theorem map_div (s t : Table K) : s.map φ / t.map φ = (s / t).map φ :=
-  map_map₂ (map_zero φ) (fun a b ↦ (_root_.map_div₀ φ a b).symm) s t
 
 theorem map_best [LinearOrder K] [LinearOrder L] (hφ : StrictMono φ) (i n : ℕ) (t : Table K) :
     (t.map φ).best i n = (t.best i n).map φ := by

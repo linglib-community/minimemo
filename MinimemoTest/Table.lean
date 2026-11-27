@@ -8,14 +8,20 @@ namespace MinimemoTest
 /-- A weight on two variables, 0 with three positions and 1 with two. -/
 def example₁ : Table ℚ := ofFn [(0, 3), (1, 2)] fun σ ↦ (σ 0 + 1 : ℕ) * (σ 1 + 1 : ℕ)
 
+/-- The product of two tables, with the operation that combines tables. -/
+def mul (s t : Table ℚ) : Table ℚ := op (k := 2) (fun v ↦ v 0 * v 1) fun i ↦ if i = 0 then s else t
+
+/-- The quotient of two tables. -/
+def div (s t : Table ℚ) : Table ℚ := op (k := 2) (fun v ↦ v 0 / v 1) fun i ↦ if i = 0 then s else t
+
 #guard example₁.data == #[1, 2, 2, 4, 3, 6]
 #guard (example₁.sumOut 1).data == #[3, 6, 9]
 #guard (example₁.sumOut 0).data == #[6, 12]
 #guard ((example₁.sumOut 0).sumOut 1).data == #[18]
-#guard (example₁ / example₁.sumOut 1).data == #[1/3, 2/3, 1/3, 2/3, 1/3, 2/3]
-#guard ((example₁ / example₁.sumOut 1).sumOut 1).data == #[1, 1, 1]
-#guard (example₁ * const 2).data == #[2, 4, 4, 8, 6, 12]
-#guard (ofFn [(1, 2)] (fun σ ↦ (σ 1 : ℚ)) * ofFn [(0, 3)] fun σ ↦ (σ 0 : ℚ)).vars == [(0, 3), (1, 2)]
+#guard (div example₁ (example₁.sumOut 1)).data == #[1/3, 2/3, 1/3, 2/3, 1/3, 2/3]
+#guard ((div example₁ (example₁.sumOut 1)).sumOut 1).data == #[1, 1, 1]
+#guard (mul example₁ (const 2)).data == #[2, 4, 4, 8, 6, 12]
+#guard (mul (ofFn [(1, 2)] fun σ ↦ (σ 1 : ℚ)) (ofFn [(0, 3)] fun σ ↦ (σ 0 : ℚ))).vars == [(0, 3), (1, 2)]
 
 -- a sum over a variable that the table lacks adds each number to itself
 #guard ((example₁.sumOut 1).sumOver [(1, 2)]).data == #[6, 12, 18]

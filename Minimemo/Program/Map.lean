@@ -30,7 +30,7 @@ numbers.
 
 ## Main results
 
-* `Memo.Term.eval_map`, `Memo.Step.table_map`: the tables of a term and of a step.
+* `Memo.Term.eval_map`: the table of a term.
 * `Memo.Program.entries_map`, `Memo.Program.rows_map`: the array of a program.
 * `Memo.Interp.compat_ofField`: the interpretations in two ordered fields are compatible.
 -/
@@ -71,9 +71,6 @@ theorem getD_map_tables (φ : K →+* L) (W : Array (Table K)) (w : ℕ) :
 variable {φ : K →+* L} (hφ : StrictMono φ) (h : Interp.Compat φ I J)
 include hφ h
 
-set_option linter.unusedSectionVars false in
-mutual
-
 /-- The table of a term in the second interpretation is the image of its table in the first. -/
 theorem Term.eval_map : ∀ (t : Term D F) (W : Array (Table K)),
     t.eval J size (W.map (Table.map φ)) = (t.eval I size W).map φ
@@ -86,43 +83,16 @@ theorem Term.eval_map : ∀ (t : Term D F) (W : Array (Table K)),
   | .val i d, W => by
     rw [Term.eval, Term.eval, Table.map_ofFn]
     simp only [h.val]
-  | .expect w over t, W => by
-    rw [Term.eval, Term.eval, Term.eval_map t W, getD_map_tables, Table.map_mul,
-      Table.map_sumOver (map_zero φ) (map_add φ)]
+  | .ref w, W => by rw [Term.eval, Term.eval, getD_map_tables]
+  | .sum over t, W => by
+    rw [Term.eval, Term.eval, Term.eval_map t W, Table.map_sumOver (map_zero φ) (map_add φ)]
   | .rename links t, W => by
     rw [Term.eval, Term.eval, Term.eval_map t W, Table.map_rename (map_zero φ)]
   | .best i t, W => by
     rw [Term.eval, Term.eval, Term.eval_map t W, Table.map_best φ hφ]
-  | .after s t, W => by
-    rw [Term.eval, Term.eval, Step.table_map s W, ← Array.map_push]
-    exact Term.eval_map t _
-
-/-- The table of a step in the second interpretation is the image of its table in the first. -/
-theorem Step.table_map : ∀ (s : Step D F) (W : Array (Table K)),
-    s.table J size (W.map (Table.map φ)) = (s.table I size W).map φ
-  | .chooses w over t, W => by
-    simp only [Step.table]
-    rw [Term.eval_map t W, getD_map_tables, Table.map_sumOver (map_zero φ) (map_add φ),
-      Table.map_div, Table.map_mul]
-  | .weighs w t, W => by
-    simp only [Step.table]
-    rw [Term.eval_map t W, getD_map_tables, Table.map_mul]
-  | .observes w over, W => by
-    simp only [Step.table]
-    rw [getD_map_tables, Table.map_sumOver (map_zero φ) (map_add φ), Table.map_div]
-  | .forgets w over, W => by
-    simp only [Step.table]
-    rw [getD_map_tables, Table.map_sumOver (map_zero φ) (map_add φ)]
-
-end
-
-theorem foldl_run_map : ∀ (l : List (Step D F)) (W : Array (Table K)),
-    l.foldl (Step.run J size) (W.map (Table.map φ)) =
-      (l.foldl (Step.run I size) W).map (Table.map φ)
-  | [], _ => rfl
-  | s :: l, W => by
-    rw [List.foldl_cons, List.foldl_cons, Step.run, Step.table_map hφ h s W, ← Array.map_push]
-    exact foldl_run_map l _
+  | .bind t₁ t₂, W => by
+    rw [Term.eval, Term.eval, Term.eval_map t₁ W, ← Array.map_push]
+    exact Term.eval_map t₂ _
 
 omit hφ [LinearOrder K] [LinearOrder L] in
 theorem Program.size_map (p : Program D F) : p.size J = p.size I := by
@@ -136,7 +106,7 @@ theorem Program.table_map (p : Program D F) : p.table J = (p.table I).map φ := 
   rw [Program.table, Program.table, p.size_map h]
   have h1 : (#[Table.const 1] : Array (Table L)) = (#[Table.const 1] : Array (Table K)).map
       (Table.map φ) := by simp [Table.map_const]
-  rw [h1, foldl_run_map hφ h, Term.eval_map hφ h]
+  rw [h1, Term.eval_map hφ h]
 
 /-- The entries of the array of a program in the second interpretation are the images of its
 entries in the first. -/

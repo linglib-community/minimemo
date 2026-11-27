@@ -16,9 +16,8 @@ size that the program gives that choice.
 
 ## Main results
 
-* `Memo.Term.sized_eval`, `Memo.Step.sized_table`: the table of a term or a step is sized, when
-  the tables so far are.
-* `Memo.Program.sized_tables`: every table that a program computes is sized.
+* `Memo.Term.sized_eval`: the table of a term is sized, when the tables so far are.
+* `Memo.Program.sized_table`: the table that a program returns is sized.
 -/
 
 @[expose] public section
@@ -133,13 +132,11 @@ theorem sized_push {W : Array (Table K)} (hW : ∀ x ∈ W, x.Sized size) {t : T
 
 variable {D : Type u} {F : ℕ → Type u} [Semifield K] [LinearOrder K] {I : Interp D F K}
 
-mutual
-
 /-- The table of a term is sized, when the tables so far are sized. -/
 theorem Term.sized_eval : ∀ (t : Term D F) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
     (t.eval I size W).Sized size
   | .lit q, _, _ => Table.sized_const _
-  | .op f ts, W, hW => by
+  | .op o ts, W, hW => by
     rw [Term.eval]
     refine Table.Sized.op _ fun i ↦ ?_
     simpa using Term.sized_eval (ts i) W hW
@@ -148,59 +145,30 @@ theorem Term.sized_eval : ∀ (t : Term D F) (W : Array (Table K)), (∀ x ∈ W
     intro w hw
     obtain rfl : w = (i, size i) := by simpa [Table.ofFn] using hw
     rfl
-  | .expect w over t, W, hW => by
+  | .ref w, W, hW => by
     rw [Term.eval]
-    exact ((Term.sized_eval t W hW).mul (sized_getD hW w)).sumOver _
+    exact sized_getD hW w
+  | .sum over t, W, hW => by
+    rw [Term.eval]
+    exact (Term.sized_eval t W hW).sumOver _
   | .rename links t, W, hW => by
     rw [Term.eval]
     exact (Term.sized_eval t W hW).rename fun l hl ↦ by simpa using (List.mem_filter.1 hl).2
   | .best i t, W, hW => by
     rw [Term.eval]
     exact (Term.sized_eval t W hW).best i _
-  | .after s t, W, hW => by
+  | .bind t₁ t₂, W, hW => by
     rw [Term.eval]
-    exact Term.sized_eval t _ (sized_push hW (Step.sized_table s W hW))
+    exact Term.sized_eval t₂ _ (sized_push hW (Term.sized_eval t₁ W hW))
 
-/-- The table that a step adds is sized, when the tables so far are sized. -/
-theorem Step.sized_table : ∀ (s : Step D F) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
-    (s.table I size W).Sized size
-  | .chooses w over t, W, hW => by
-    have ht := Term.sized_eval t W hW
-    rw [Step.table]
-    exact (sized_getD hW w).mul (ht.div (ht.sumOver _))
-  | .weighs w t, W, hW => by
-    rw [Step.table]
-    exact (sized_getD hW w).mul (Term.sized_eval t W hW)
-  | .observes w over, W, hW => by
-    rw [Step.table]
-    exact (sized_getD hW w).div ((sized_getD hW w).sumOver _)
-  | .forgets w over, W, hW => by
-    rw [Step.table]
-    exact (sized_getD hW w).sumOver _
-
-end
-
-/-- The tables after any steps are sized. -/
-theorem sized_foldl_run (steps : List (Step D F)) :
-    ∀ x ∈ steps.foldl (Step.run I size) #[.const 1], x.Sized size := by
-  have key : ∀ (steps : List (Step D F)) (W : Array (Table K)), (∀ x ∈ W, x.Sized size) →
-      ∀ x ∈ steps.foldl (Step.run I size) W, x.Sized size := by
-    intro steps
-    induction steps with
-    | nil => exact fun W hW ↦ hW
-    | cons s steps ih => exact fun W hW ↦ ih _ (sized_push hW (Step.sized_table s W hW))
-  exact key steps _ fun x hx ↦ by
-    obtain rfl : x = .const 1 := by simpa using hx
-    exact Table.sized_const 1
-
-/-- Every table that a program computes is sized. -/
-theorem Program.sized_tables (I : Interp D F K) (p : Program D F) :
-    ∀ x ∈ p.steps.foldl (Step.run I (p.size I)) #[.const 1], x.Sized (p.size I) :=
-  sized_foldl_run p.steps
+omit [LinearOrder K] in
+theorem sized_one : ∀ x ∈ (#[.const 1] : Array (Table K)), x.Sized size := fun x hx ↦ by
+  obtain rfl : x = .const 1 := by simpa using hx
+  exact Table.sized_const 1
 
 /-- The table that a program returns is sized. -/
 theorem Program.sized_table (I : Interp D F K) (p : Program D F) :
     (p.table I).Sized (p.size I) :=
-  Term.sized_eval _ _ (p.sized_tables I)
+  Term.sized_eval _ _ sized_one
 
 end Memo

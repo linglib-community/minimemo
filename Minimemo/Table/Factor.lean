@@ -27,7 +27,6 @@ variables gives the sum of its factor over those choices.
 
 ## Main results
 
-* `Memo.Table.toFactor_mul`, `Memo.Table.toFactor_div`: the factor of a product or a quotient.
 * `Memo.Table.toFactor_sumOver`: the factor of a sum over a list of variables.
 * `Memo.Table.get_rename`: a renamed table is read through its links.
 -/
@@ -109,27 +108,6 @@ theorem sized_ofFn (vars : List (ℕ × ℕ)) (f : (ℕ → ℕ) → K) :
     (ofFn vars f).Sized size ↔ ∀ v ∈ vars, v.2 = size v.1 := Iff.rfl
 
 theorem sized_const (k : K) : (const k).Sized size := fun _ h ↦ by simp [const] at h
-
-section Map₂
-
-variable [Zero K] {s t : Table K} {σ : ℕ → ℕ}
-
-theorem Sized.map₂ (g : K → K → K) (hs : s.Sized size) (ht : t.Sized size) :
-    (map₂ g s t).Sized size := fun v hv ↦
-  (List.mem_append.1 (mem_distinct hv)).elim (hs v) (ht v)
-
-/-- The table that combines two sized tables with `g` has, at an assignment in range, the value
-of `g` at their numbers. -/
-theorem get_map₂ (g : K → K → K) (hs : s.Sized size) (ht : t.Sized size)
-    (hσ : ∀ i, σ i < size i) : (map₂ g s t).get σ = g (s.get σ) (t.get σ) := by
-  refine get_ofFn _ _ (fun v hv ↦ ?_) fun σ₁ σ₂ h ↦ ?_
-  · rw [Sized.map₂ g hs ht v hv]
-    exact hσ _
-  · have h' := agree_of_distinct h
-    rw [s.get_congr fun w hw ↦ h' w (List.mem_append_left _ hw),
-      t.get_congr fun w hw ↦ h' w (List.mem_append_right _ hw)]
-
-end Map₂
 
 section Rename
 
@@ -238,20 +216,6 @@ variable [Semifield K] {s t : Table K}
 variable. -/
 def toFactor (size : ℕ → ℕ) (t : Table K) : Factor (fun i ↦ Fin (size i)) K :=
   fun σ ↦ t.get fun i ↦ σ i
-
-theorem toFactor_mul (hs : s.Sized size) (ht : t.Sized size) :
-    toFactor size (s * t) = toFactor size s * toFactor size t :=
-  funext fun σ ↦ get_map₂ _ hs ht fun i ↦ (σ i).isLt
-
-theorem toFactor_div (hs : s.Sized size) (ht : t.Sized size) :
-    toFactor size (s / t) = toFactor size s / toFactor size t :=
-  funext fun σ ↦ get_map₂ _ hs ht fun i ↦ (σ i).isLt
-
-theorem Sized.mul (hs : s.Sized size) (ht : t.Sized size) : (s * t).Sized size :=
-  Sized.map₂ _ hs ht
-
-theorem Sized.div (hs : s.Sized size) (ht : t.Sized size) : (s / t).Sized size :=
-  Sized.map₂ _ hs ht
 
 /-- The factor of the sum of a table over a variable is the sum of its factor over that choice. -/
 theorem toFactor_sumOver_singleton (i : ℕ) (ht : t.Sized size) :

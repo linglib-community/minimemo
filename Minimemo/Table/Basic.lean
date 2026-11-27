@@ -24,7 +24,6 @@ it ignores the variables that are not its own.
 * `Memo.Table.get t σ`: the number of the table `t` at the assignment `σ`.
 * `Memo.Table.ofFn vars f`: the table on `vars` with the values of the function `f`.
 * `Memo.Table.const k`: the table with no variables and the number `k`.
-* `Memo.Table.map₂ f s t`: the table that combines the numbers of `s` and `t` with `f`.
 * `Memo.Table.sumOut i t`: the table `t` summed over its variable `i`.
 * `Memo.Table.sumOver I t`: the table `t` summed over the variables in `I`, each with its
   size.
@@ -86,10 +85,6 @@ def distinct (xs : List (ℕ × ℕ)) : List (ℕ × ℕ) := xs.foldr insertVar 
 /-- The variables of either of two lists, in increasing order. -/
 def union (xs ys : List (ℕ × ℕ)) : List (ℕ × ℕ) := distinct (xs ++ ys)
 
-/-- The table that combines the numbers of two tables with `f`. -/
-def map₂ [Zero K] (f : K → K → K) (s t : Table K) : Table K :=
-  ofFn (union s.vars t.vars) fun σ ↦ f (s.get σ) (t.get σ)
-
 /-- The table summed over its variable `i`. -/
 def sumOut [Zero K] [Add K] (i : ℕ) (t : Table K) : Table K :=
   match t.vars.find? (·.1 == i) with
@@ -123,9 +118,6 @@ def rename [Zero K] (links : List (ℕ × ℕ)) (t : Table K) : Table K :=
   let r (i : ℕ) : ℕ := (links.lookup i).getD i
   if t.vars.all fun v ↦ r v.1 == v.1 then t
   else ofFn (distinct (t.vars.map fun v ↦ (r v.1, v.2))) fun σ ↦ t.get fun i ↦ σ (r i)
-
-instance [Zero K] [Mul K] : Mul (Table K) := ⟨map₂ (· * ·)⟩
-instance [Zero K] [Div K] : Div (Table K) := ⟨map₂ (· / ·)⟩
 
 end Table
 

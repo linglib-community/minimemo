@@ -74,10 +74,10 @@ structure Gen (D : Type u) (F : ℕ → Type u) : Type u where
   /-- The next free number of a choice. -/
   next : ℕ
   /-- The steps so far. -/
-  steps : Array (Step D F)
+  steps : Array (Term D F)
 
 /-- The steps with one more, and the number of the table that it adds. -/
-def Gen.push {D : Type u} {F : ℕ → Type u} (g : Gen D F) (s : Step D F) : Gen D F × ℕ :=
+def Gen.push {D : Type u} {F : ℕ → Type u} (g : Gen D F) (s : Term D F) : Gen D F × ℕ :=
   ({ g with steps := g.steps.push s }, g.steps.size + 1)
 
 variable {A N D : Type u} {F : ℕ → Type u} [DecidableEq A] [DecidableEq N] [DecidableEq D]
@@ -153,8 +153,8 @@ def choose (S : Scope A N D) (g : Gen D F) (α : A) (xs : List (N × D)) (wrap :
   if deps.all (· ∈ Sα'.certain) ∧ xs.all fun p ↦ (Sα.entries.lookup (.self, p.1)).isNone then
     let S' := xs.zipIdx.foldl
       (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
-    let (g', w) := g.push
-      (.chooses S.table (xs.zipIdx.map fun p ↦ g.next + p.2) (.rename Sα'.links (wrap t)))
+    let (g₁, r) := g.push (.rename Sα'.links (wrap t))
+    let (g', w) := g₁.push (Term.chooses S.table (xs.zipIdx.map fun p ↦ g.next + p.2) (.ref r))
     some ({ S'.setAgent α Sα' with table := w }, { g' with next := g.next + xs.length + extra })
   else none
 
@@ -180,12 +180,12 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) : Option (Term 
   | .expect e => do
     let (t, deps) ← Expr.term e S g
     if deps.all (· ∈ S.certain) then some (t, deps)
-    else some (.expect S.table S.uncertain t, S.certain)
+    else some (Term.expect S.table S.uncertain t, S.certain)
   | .imagine s e => do
     let (S', g') ← Stmt.steps s S g
     let (t, deps) ← Expr.term e S' g'
     if deps.all fun i ↦ i ∈ S'.certain ∧ S.entries.any (·.2.index == i) then
-      some ((g'.steps.toList.drop g.steps.size).foldr Term.after t, deps)
+      some ((g'.steps.toList.drop g.steps.size).foldr Term.bind t, deps)
     else none
 termination_by structural e
 
@@ -217,14 +217,14 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) : Option (Scop
       let Sα' : Scope A N D :=
         { Sα.insert (.agent β, x) { cα with certain := true, given := true } with
           links := (cα.index, c.index) :: Sα.links }
-      let (g', w) := g.push (.observes Sα.table Sα'.uncertain)
+      let (g', w) := g.push (Term.observes Sα.table Sα'.uncertain)
       some (S.setAgent α { Sα' with table := w }, g')
     else none
   | .observesEvent α e => do
     let Sα := S.agent α
     let (t, _) ← Expr.term e Sα g
-    let (g', w) := g.push (.weighs Sα.table t)
-    let (g'', w') := g'.push (.observes w Sα.uncertain)
+    let (g', w) := g.push (Term.weighs Sα.table t)
+    let (g'', w') := g'.push (Term.observes w Sα.uncertain)
     some (S.setAgent α { Sα with table := w' }, { g'' with next := g.next + (Expr.doms e).length })
   | .knows α γ y => do
     let c ← S.entries.lookup (γ, y)
@@ -248,7 +248,7 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) : Option (Scop
     if xs.all fun x ↦ (Sα.entries.lookup (.self, x)).any (!·.given) ∧
         (S.entries.lookup (.agent α, x)).isSome then
       let over := (xs.filterMap fun x ↦ (S.entries.lookup (.agent α, x)).map (·.index)).dedup
-      let (g', w) := g.push (.forgets S.table over)
+      let (g', w) := g.push (Term.forgets S.table over)
       some ({ (S.erase (xs.map fun x ↦ (.agent α, x))).setAgent α
           (Sα.erase (xs.map fun x ↦ (.self, x))) with table := w }, g')
     else none
