@@ -63,7 +63,7 @@ inductive Ref (A : Type u) : Type u
   | self
   /-- The agent with the name `α`. -/
   | agent (α : A)
-  deriving DecidableEq
+  deriving DecidableEq, Repr
 
 /-- The **operators** of memo, by their number of arguments. A test has the value one when it
 holds and zero when it does not, and a number is taken as true when it is not zero. -/

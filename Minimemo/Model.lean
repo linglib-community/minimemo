@@ -14,6 +14,7 @@ This file defines the array that a model returns in an interpretation.
 
 ## Main definitions
 
+* `Memo.Model.error M`: why the model `M` is not accepted, if it is not.
 * `Memo.Model.entries I M`: the entries of the array of `M`, in row-major order.
 * `Memo.Model.rows I M`: the same entries, as rows along the last axis.
 -/
@@ -26,12 +27,20 @@ namespace Memo
 
 variable {A N D : Type u} {F : ℕ → Type u} [DecidableEq A] [DecidableEq N] [DecidableEq D]
 
+/-- Why a model is not accepted, if it is not. -/
+def Model.error (M : Model A N D F) : Option (Error A N) :=
+  match Model.program M with
+  | .error e => some e
+  | .ok _ => none
+
 variable {K : Type u} [Semifield K] [LinearOrder K] (I : Interp D F K)
 
 /-- The entries of the array of a model, in row-major order. -/
-def Model.entries (M : Model A N D F) : Option (List K) := (Model.program M).map (·.entries I)
+def Model.entries (M : Model A N D F) : Option (List K) :=
+  (Model.program M).toOption.map (·.entries I)
 
 /-- The rows of the array of a model, along its last axis. -/
-def Model.rows (M : Model A N D F) : Option (List (List K)) := (Model.program M).map (·.rows I)
+def Model.rows (M : Model A N D F) : Option (List (List K)) :=
+  (Model.program M).toOption.map (·.rows I)
 
 end Memo

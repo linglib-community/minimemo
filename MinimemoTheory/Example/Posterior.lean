@@ -96,7 +96,7 @@ def size (i : ℕ) : ℕ :=
 theorem arith : (interp dom w).Arith := ⟨fun _ ↦ rfl, fun _ ↦ rfl⟩
 
 /-- The terms of the tables of the program of the model. -/
-def steps : List (Term Dom Fn) := ((Model.program model).map (·.steps)).getD []
+def steps : List (Term Dom Fn) := ((Model.program model).toOption.map (·.steps)).getD []
 
 /-- The weight of the referent in the program: the table `1`. -/
 def one : Term Dom Fn := steps[0]?.getD (.lit 0)
@@ -112,7 +112,7 @@ theorem steps_eq :
     steps = [one, Term.chooses 0 [2] (.ref 1), said, Term.chooses 2 [3] (.ref 3),
       Term.observes 4 [2]] := rfl
 
-theorem doms_eq : (Model.program model).map (·.doms) = some [.U, .R, .R, .U] := rfl
+theorem doms_eq : (Model.program model).toOption.map (·.doms) = some [.U, .R, .R, .U] := rfl
 
 /-- The tables `0` to `3`: after the listener thinks that the speaker chooses the referent, with
 the weight of the utterance. -/
@@ -131,10 +131,10 @@ def observes : Table ℝ≥0 :=
   (Term.observes 4 [2] : Term Dom Fn).eval (interp dom w) (size dom) (thinks dom w)
 
 /-- The table that the program returns is computed from these tables. -/
-theorem table_eq (p : Program Dom Fn) (hp : Model.program model = some p) :
+theorem table_eq (p : Program Dom Fn) (hp : Model.program model = .ok p) :
     p.steps.foldl (fun W t ↦ W.push (t.eval (interp dom w) (size dom) W)) #[.const 1] =
       (thinks dom w).push (observes dom w) := by
-  obtain rfl := Option.some.inj hp
+  obtain rfl := Except.ok.inj hp
   rfl
 
 /-- The weight of the utterance in the program is `w` at the values of the utterance and of the

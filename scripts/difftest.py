@@ -108,8 +108,8 @@ def main() -> int:
         fns.append(f"  | {ident(name + '_ref')}{f' ({ps} : ℚ)' if ps else ''} : Fn {len(axes_of(name))}")
     lean = ["import Minimemo.Model", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
-            f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
-            f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
+            f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq, Repr",
+            f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq, Repr",
             f"inductive Dom | {' | '.join(domains)} deriving DecidableEq",
             "inductive Fn : ℕ → Type", *fns, "",
             "def dom : Dom → Domain ℚ"]
@@ -157,6 +157,11 @@ def main() -> int:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
         m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
         lean.append(f"#eval Model.entries interp {m}")
+    lean.append('#eval "errors"')
+    for f in raw:  # why each model is not accepted, if it is not
+        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
+        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
+        lean.append(f"#eval Model.error {m}")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
 
@@ -164,12 +169,16 @@ def main() -> int:
     if run.returncode != 0:
         print(run.stdout + run.stderr)
         return 1
-    results = re.findall(r"some\s*\[(.*?)\]|(none)", run.stdout, re.S)
+    arrays, _, errors = run.stdout.partition('"errors"')
+    results = re.findall(r"some\s*\[(.*?)\]|(none)", arrays, re.S)
+    reasons = [None if line == "none" else
+               re.sub(r"\b(Memo\.)?(Error|Agent|Name|Ref)\.", "", line[len("some ("):-1])
+               for line in errors.splitlines() if line.startswith(("none", "some"))]
 
     scope = vars(examples)
     scope["memo"] = memo
     failed = 0
-    for f, (entries, none) in zip(raw, results, strict=True):
+    for f, (entries, none), reason in zip(raw, results, reasons, strict=True):
         # memo compiles a model in the scope of its caller, which has to be the module of the model
         sizes = [len(values[s.domain]) for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
         try:
@@ -180,7 +189,7 @@ def main() -> int:
         if none or out is None:
             ok = bool(none) and out is None
             failed += not ok
-            print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}  (rejected)")
+            print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}  (rejected: {reason or 'by memo only'})")
             continue
         want = numpy.broadcast_to(numpy.asarray(out), sizes).ravel()
         got = [float(Fraction(*map(int, e.replace(" ", "").split("/")))) for e in entries.split(",")]

@@ -39,7 +39,7 @@ example : Model.rows interp greedy = some [[1, 1, 1]] := by decide +kernel
 def repeated : Model Agent Name Dom Fn :=
   { model with body := .chooses .a .y .X (.lit 1) ;; .chooses .a .y .X (.lit 1) }
 
-example : (Model.program repeated).isNone = true := by decide +kernel
+example : Model.error repeated = some (.repeatedChoice .a .y) := by decide +kernel
 
 /-- A weight that the agent is uncertain of is not a model. -/
 def uncertain : Model Agent Name Dom Fn :=
@@ -47,6 +47,27 @@ def uncertain : Model Agent Name Dom Fn :=
     body := .thinks .a (.chooses .b .z .X (.lit 1)) ;;
       .chooses .a .y .X (.query .b (.choice .z)) }
 
-example : (Model.program uncertain).isNone = true := by decide +kernel
+example : Model.error uncertain = some (.uncertainWeight .a) := by decide +kernel
+
+/-- A model that is accepted has no error. -/
+example : Model.error model = none := by decide +kernel
+
+/-- A choice that no one made is not a model. -/
+def unknown : Model Agent Name Dom Fn :=
+  { model with ret := .expect (.query .a (.choice .z)) }
+
+example : Model.error unknown = some (.unknownChoice .self .z) := by decide +kernel
+
+/-- An agent of whom nothing was said cannot be asked. -/
+def stranger : Model Agent Name Dom Fn :=
+  { model with ret := .query .b (.lit 1) }
+
+example : Model.error stranger = some (.unknownAgent .b) := by decide +kernel
+
+/-- A model cannot return a value that depends on an agent's choice. -/
+def leaks : Model Agent Name Dom Fn :=
+  { model with ret := .query .a (.choice .y) }
+
+example : Model.error leaks = some .uncertainReturn := by decide +kernel
 
 end MinimemoTest
