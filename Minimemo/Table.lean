@@ -5,140 +5,127 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Mathlib.Algebra.BigOperators.Field
-public import Mathlib.Data.Fintype.BigOperators
-public import Mathlib.Basic.NNReal.Basic
+public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
+public import Mathlib.Order.Defs.LinearOrder
 
 /-!
 # Tables
 
-This file defines the tables of the memo language and the operations that its statements perform
-on them. In memo each agent has a frame of mind. The frame records the choices the agent knows and
-the choices it is uncertain of, and it holds an array with one axis for each choice. An entry of
-the array is the probability of some values of the uncertain choices, given some values of the
-known ones.
+This file defines the arrays of memo as stored tables.
 
-Let `K` be the type of values of the known choices and `U` the type of values of the uncertain
-ones. A table is a function `K → U → ℝ≥0`. The statements of memo act on a table as follows.
-
-* `chooses` adds an uncertain choice with values in `X`. It multiplies each entry by a weight for
-  each value of the new choice, after the weights have been normalized to sum to one.
-* `observes` makes one uncertain choice known. It divides each entry by the sum of the entries
-  that have the same values of the known choices and of the observed one.
-* `E[e]` is the sum of the values of `e` weighted by the entries of the table.
-
-For example, a listener thinks that a speaker chooses a referent `r` uniformly and then an
-utterance `u` with weight `w r u`. The listener's table has the entries
-`(1 / n) * (w r u / ∑ u', w r u')`, where `n` is the number of referents. When the listener
-observes the utterance, the entry for `r` becomes its share of the entries with that utterance,
-which is the posterior probability of `r`.
+A table has a list of variables, each with a size, and one number for every assignment of a
+position below its size to each of its variables. The numbers are stored in an array, in row-major
+order, so each is computed once. A table is read at an assignment of positions to all variables;
+it ignores the variables that are not its own.
 
 ## Main definitions
 
-* `Memo.Table K U`: the type `K → U → ℝ≥0` of tables.
-* `Memo.Table.normalize w`: the table `fun k x ↦ w k x / ∑ x', w k x'`.
-* `Memo.Table.chooses π w`: the table `fun k (u, x) ↦ π k u * w.normalize (k, u) x`.
-* `Memo.Table.observes π`: the normalization of the table `fun (k, x) u ↦ π k (u, x)`.
-* `Memo.Table.expect π e`: the function `fun k ↦ ∑ u, π k u * e k u`.
-* `Memo.Table.lift f π`: the table `fun k' ↦ π (f k')`.
-
-## Main results
-
-* `Memo.Table.sum_normalize`: a row of a normalized table sums to one, or to zero if the row of
-  weights is zero.
-
-## Implementation notes
-
-The paper gives the semantics on arrays whose axes are numbered by a global counter, and it uses
-broadcasting to combine arrays with different axes. Here the axes of a table are the components of
-the types `K` and `U`, so a choice is added by a product of types and no axis is numbered.
-
-An entry is a nonnegative real number, and division by zero gives zero, so a row of weights that
-sums to zero gives a row of zeros. The expectation sums over all the uncertain choices of the
-frame.
-
-## References
-
-* K. Chandra, T. Chen, J. B. Tenenbaum and J. Ragan-Kelley, *A Domain-Specific Probabilistic
-  Programming Language for Reasoning about Reasoning (Or: A Memo on memo)*, Proc. ACM Program.
-  Lang. 9, OOPSLA2, Article 300 (2025)
+* `Memo.Table K`: a list of variables with sizes and an array of numbers.
+* `Memo.Table.get t σ`: the number of the table `t` at the assignment `σ`.
+* `Memo.Table.ofFn vars f`: the table on `vars` with the values of the function `f`.
+* `Memo.Table.const k`: the table with no variables and the number `k`.
+* `Memo.Table.map₂ f s t`: the table that combines the numbers of `s` and `t` with `f`.
+* `Memo.Table.sumOut i t`: the table `t` summed over its variable `i`.
+* `Memo.Table.sumOver I t`: the table `t` summed over the variables in `I`, each with its
+  size.
+* `Memo.Table.op f ts`: the table that combines the numbers of the tables `ts` with `f`.
+* `Memo.Table.best i size t`: the table with the number one where `t` is greatest along the
+  variable `i`, and zero elsewhere.
+* `Memo.Table.rename links t`: the table `t` with each variable replaced by the variable
+  that `links` gives it.
 -/
 
 @[expose] public section
 
-open scoped NNReal
-
 namespace Memo
 
-/-- A **table** gives, for each value of the choices that an agent knows, a weight for each value
-of the choices that it is uncertain of. -/
-abbrev Table (K U : Type*) := K → U → ℝ≥0
+/-- A **table** has a list of variables with their sizes and one number for every assignment of a
+position to each variable, stored in row-major order. -/
+structure Table (K : Type*) where
+  /-- The variables of the table, each with its size. -/
+  vars : List (ℕ × ℕ)
+  /-- The numbers of the table, in row-major order. -/
+  data : Array K
+  deriving Repr
 
 namespace Table
 
-variable {K K' U X : Type*}
+variable {K : Type*}
 
-/-- The **lift** of a table along a function `f` is the table whose row at `k'` is the row of the
-table at `f k'`. It reads the table of an agent from the frame of an agent who models it, where
-`f` gives what the modelled agent knows. -/
-def lift (f : K' → K) (π : Table K U) : Table K' U := fun k' ↦ π (f k')
+/-- The lists of positions for variables of the given sizes, in row-major order. -/
+def positions : List ℕ → List (List ℕ)
+  | [] => [[]]
+  | m :: ms => (List.range m).flatMap fun j ↦ (positions ms).map (j :: ·)
 
-@[simp] theorem lift_apply (f : K' → K) (π : Table K U) (k' : K') : π.lift f k' = π (f k') := rfl
+/-- The place in the array of an assignment of positions to the variables. -/
+def index (vars : List (ℕ × ℕ)) (σ : ℕ → ℕ) : ℕ := vars.foldl (fun at' v ↦ at' * v.2 + σ v.1) 0
 
-section Normalize
+/-- The number of a table at an assignment of a position to every variable. -/
+def get [Zero K] (t : Table K) (σ : ℕ → ℕ) : K := t.data.getD (index t.vars σ) 0
 
-variable [Fintype X]
+/-- The assignment that gives the variables of `vars` the positions `js`, and zero elsewhere. -/
+def assign (vars : List (ℕ × ℕ)) (js : List ℕ) (i : ℕ) : ℕ :=
+  ((vars.map (·.1)).zip js).lookup i |>.getD 0
 
-/-- The **normalization** of a table divides each entry by the sum of its row. A row of zeros
-stays a row of zeros. -/
-noncomputable def normalize (w : Table K X) : Table K X := fun k x ↦ w k x / ∑ x', w k x'
+/-- The table on the variables `vars` whose numbers are the values of `f`. -/
+def ofFn (vars : List (ℕ × ℕ)) (f : (ℕ → ℕ) → K) : Table K :=
+  ⟨vars, ((positions (vars.map (·.2))).map fun js ↦ f (assign vars js)).toArray⟩
 
-theorem normalize_apply (w : Table K X) (k : K) (x : X) :
-    w.normalize k x = w k x / ∑ x', w k x' := rfl
+/-- The table with no variables and the number `k`. -/
+def const (k : K) : Table K := ⟨[], #[k]⟩
 
-/-- A row of a normalized table sums to one, or to zero if the row of weights is zero. -/
-theorem sum_normalize (w : Table K X) (k : K) :
-    ∑ x, w.normalize k x = if ∑ x, w k x = 0 then 0 else 1 := by
-  simp only [normalize_apply, ← Finset.sum_div]
-  split_ifs with h
-  · rw [h, div_zero]
-  · exact div_self h
+/-- A list of variables in increasing order with one more variable, unless the list has it. -/
+def insertVar (v : ℕ × ℕ) : List (ℕ × ℕ) → List (ℕ × ℕ)
+  | [] => [v]
+  | w :: ws =>
+    if v.1 < w.1 then v :: w :: ws else if v.1 = w.1 then w :: ws else w :: insertVar v ws
 
-theorem sum_normalize_le_one (w : Table K X) (k : K) : ∑ x, w.normalize k x ≤ 1 := by
-  rw [sum_normalize]; split_ifs <;> simp
+/-- The variables of a list, each once, in increasing order. -/
+def distinct (xs : List (ℕ × ℕ)) : List (ℕ × ℕ) := xs.foldr insertVar []
 
-/-- A normalized table is its own normalization. -/
-@[simp] theorem normalize_normalize (w : Table K X) : w.normalize.normalize = w.normalize := by
-  funext k x
-  rw [normalize_apply, sum_normalize]
-  split_ifs with h
-  · rw [div_zero, normalize_apply, h, div_zero]
-  · rw [div_one]
+/-- The variables of either of two lists, in increasing order. -/
+def union (xs ys : List (ℕ × ℕ)) : List (ℕ × ℕ) := distinct (xs ++ ys)
 
-end Normalize
+/-- The table that combines the numbers of two tables with `f`. -/
+def map₂ [Zero K] (f : K → K → K) (s t : Table K) : Table K :=
+  ofFn (union s.vars t.vars) fun σ ↦ f (s.get σ) (t.get σ)
 
-/-- The table after `chooses`: a new uncertain choice with values in `X` is added, and each entry
-is multiplied by the normalized weight `w` of the value chosen. This is equation (1) of the
-paper. -/
-noncomputable def chooses [Fintype X] (π : Table K U) (w : Table (K × U) X) : Table K (U × X) :=
-  fun k (u, x) ↦ π k u * w.normalize (k, u) x
+/-- The table summed over its variable `i`. -/
+def sumOut [Zero K] [Add K] (i : ℕ) (t : Table K) : Table K :=
+  match t.vars.find? (·.1 == i) with
+  | none => t
+  | some v =>
+    ofFn (t.vars.filter (·.1 != i)) fun σ ↦
+      (List.range v.2).foldl (fun total j ↦ total + t.get (Function.update σ i j)) 0
 
-@[simp] theorem chooses_apply [Fintype X] (π : Table K U) (w : Table (K × U) X) (k : K) (u : U)
-    (x : X) : π.chooses w k (u, x) = π k u * w.normalize (k, u) x := rfl
+/-- The table summed over the variables in `I`, each given with its size. A table that does not
+have one of these variables is constant in it, so the sum adds each number to itself that many
+times. -/
+def sumOver [Zero K] [Add K] (I : List (ℕ × ℕ)) (t : Table K) : Table K :=
+  I.foldl (fun t v ↦
+    if t.vars.any (·.1 == v.1) then t.sumOut v.1
+    else ⟨t.vars, t.data.map fun x ↦ (List.range v.2).foldl (fun total _ ↦ total + x) 0⟩) t
 
-/-- The table after `observes`: the choice with values in `X` becomes known, and each entry is
-divided by the sum of the entries with the same known and observed values. This is equation (2)
-of the paper. -/
-noncomputable def observes [Fintype U] (π : Table K (U × X)) : Table (K × X) U :=
-  normalize fun (k, x) u ↦ π k (u, x)
+/-- The table that combines the numbers of a family of tables with `f`. -/
+def op [Zero K] {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K) : Table K :=
+  ofFn ((List.finRange k).foldl (fun vars i ↦ union vars (ts i).vars) []) fun σ ↦
+    f fun i ↦ (ts i).get σ
 
-@[simp] theorem observes_apply [Fintype U] (π : Table K (U × X)) (k : K) (x : X) (u : U) :
-    π.observes (k, x) u = π k (u, x) / ∑ u', π k (u', x) := rfl
+/-- The table with the number one at the positions where `t` is greatest along the variable `i`,
+which has `size` positions, and zero elsewhere. -/
+def best [Zero K] [One K] [LinearOrder K] (i size : ℕ) (t : Table K) : Table K :=
+  ofFn t.vars fun σ ↦
+    if (List.range size).all fun j ↦ t.get (Function.update σ i j) ≤ t.get σ then 1 else 0
 
-/-- The **expectation** of `e` in a table is the sum of the values of `e` weighted by the entries
-of the table. -/
-noncomputable def expect [Fintype U] (π : Table K U) (e : K → U → ℝ) (k : K) : ℝ :=
-  ∑ u, π k u * e k u
+/-- The table with each variable replaced by the variable that `links` gives it. Two variables
+with the same replacement become one, and the table is read where they agree. -/
+def rename [Zero K] (links : List (ℕ × ℕ)) (t : Table K) : Table K :=
+  let r (i : ℕ) : ℕ := (links.lookup i).getD i
+  if t.vars.all fun v ↦ r v.1 == v.1 then t
+  else ofFn (distinct (t.vars.map fun v ↦ (r v.1, v.2))) fun σ ↦ t.get fun i ↦ σ (r i)
+
+instance [Zero K] [Mul K] : Mul (Table K) := ⟨map₂ (· * ·)⟩
+instance [Zero K] [Div K] : Div (Table K) := ⟨map₂ (· / ·)⟩
 
 end Table
 

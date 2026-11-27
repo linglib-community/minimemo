@@ -1,7 +1,7 @@
-import Minimemo.Core.Table
+import Minimemo.Table
 import Mathlib.Algebra.Order.Field.Rat
 
-open Memo.Core Memo.Core.Table
+open Memo Memo.Table
 
 namespace MinimemoTest
 

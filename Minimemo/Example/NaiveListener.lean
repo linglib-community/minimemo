@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Core.Compile
+public import Minimemo.Compile
 public import Mathlib.Algebra.Order.Field.Rat
 
 /-!
@@ -44,7 +44,7 @@ speakers choose in opposite orders. The listeners return the same array.
 ## Implementation notes
 
 The results hold by computation: the numbers are rational, and Lean evaluates the program of the
-model. The model can also be run: `#eval Core.Model.rows dom model` prints the array.
+model. The model can also be run: `#eval Model.rows dom model` prints the array.
 
 The paper writes the weight of an utterance as `1 if denotes(u, r) else 0`; here `denotes` has the
 values one and zero.
@@ -116,7 +116,7 @@ def count (u : ℚ) : ℚ := ∑ t ∈ Finset.range 3, denotes u t
 
 /-- The array that the model returns, as a list of rows: one for each utterance, with an entry for
 each referent. -/
-def rows : List (List ℚ) := (Core.Model.rows dom model).getD []
+def rows : List (List ℚ) := (Model.rows dom model).getD []
 
 /-- The entries of the array are those that the paper prints for the naive listener: *green* and
 *round* leave two referents equally likely, and *pink* and *square* pick out one. -/
@@ -158,7 +158,7 @@ def utteranceFirst : Model Agent Name Dom ℚ where
 
 /-- The model in which the speaker chooses the utterance first returns the same array as the
 model in which the speaker chooses the referent first. -/
-theorem rows_utteranceFirst : Core.Model.rows dom utteranceFirst = Core.Model.rows dom model := by
+theorem rows_utteranceFirst : Model.rows dom utteranceFirst = Model.rows dom model := by
   decide +kernel
 
 end Memo.NaiveListener

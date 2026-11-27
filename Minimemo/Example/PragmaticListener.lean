@@ -92,7 +92,7 @@ def model : Model Agent Name Dom ℚ where
 
 /-- The array that the model returns, as a list of rows: one for each utterance, with an entry for
 each referent. -/
-def rows : List (List ℚ) := (Core.Model.rows dom model).getD []
+def rows : List (List ℚ) := (Model.rows dom model).getD []
 
 /-- The array of the pragmatic listener: at *green* it gives the green circle the probability 3/5
 and the green square 2/5, and at *round* it gives the green circle 3/5 and the pink circle 2/5. -/

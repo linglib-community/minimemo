@@ -44,7 +44,7 @@ def naive : Model Agent Name Dom ℚ := memo% [u : U, r : R]
   return Pr[listener.r_pick == r]
 
 theorem rows_naive :
-    Core.Model.rows dom naive =
+    Model.rows dom naive =
       some [[1/2, 1/2, 0],
             [0,   0,   1],
             [1,   0,   0],

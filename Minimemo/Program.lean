@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Core.Table
+public import Minimemo.Table
 public import Mathlib.Algebra.Field.Defs
 
 /-!
@@ -26,21 +26,21 @@ table `1`, a third along the choice `1`, and the term
 
 ## Main definitions
 
-* `Memo.Core.Term K`: a number, an operator applied to terms, the value of a choice, an
+* `Memo.Term K`: a number, an operator applied to terms, the value of a choice, an
   expectation, a term read at other choices, or a term after a step.
-* `Memo.Core.Step K`: a choice, a weight, an observation or a forgetting.
-* `Memo.Core.Program K`: a list of steps, a term and the axes of the array.
-* `Memo.Core.Term.eval W t`: the table of the term `t`, when `W` holds the tables so far.
-* `Memo.Core.Step.run W s`: the tables after the step `s`.
-* `Memo.Core.Program.entries p`: the entries of the array of the program `p`, in row-major order.
-* `Memo.Core.Program.rows p`: the same entries, as rows along the last axis.
+* `Memo.Step K`: a choice, a weight, an observation or a forgetting.
+* `Memo.Program K`: a list of steps, a term and the axes of the array.
+* `Memo.Term.eval W t`: the table of the term `t`, when `W` holds the tables so far.
+* `Memo.Step.run W s`: the tables after the step `s`.
+* `Memo.Program.entries p`: the entries of the array of the program `p`, in row-major order.
+* `Memo.Program.rows p`: the same entries, as rows along the last axis.
 -/
 
 @[expose] public section
 
 universe u
 
-namespace Memo.Core
+namespace Memo
 
 mutual
 
@@ -137,4 +137,4 @@ def Program.rows (p : Program K) : List (List K) :=
     (Table.positions (p.axes.dropLast.map (·.2))).map fun js ↦
       (List.range last.2).map fun j ↦ t.get (Table.assign p.axes (js ++ [j]))
 
-end Memo.Core
+end Memo

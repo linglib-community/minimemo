@@ -98,7 +98,7 @@ def main() -> int:
         if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
-    lean = ["import Minimemo.Core.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
+    lean = ["import Minimemo.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
@@ -139,17 +139,17 @@ def main() -> int:
                 at = f"({at}) * {len(values[d])} + (dom .{d}).index a{i}"
             if ps:
                 lean += [f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
-                         f"  ((Core.Model.entries dom {m}).getD []).getD ({at}) 0", ""]
+                         f"  ((Model.entries dom {m}).getD []).getD ({at}) 0", ""]
             else:  # the array is computed once
                 lean += [f"def {ident(f.__name__ + '_table')} : Array ℚ :=",
-                         f"  ((Core.Model.entries dom {m}).getD []).toArray",
+                         f"  ((Model.entries dom {m}).getD []).toArray",
                          f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
                          f"  {ident(f.__name__ + '_table')}.getD ({at}) 0", ""]
     args_of = getattr(examples, "ARGS", {})
     for f in raw:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
         m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
-        lean.append(f"#eval Core.Model.entries dom {m}")
+        lean.append(f"#eval Model.entries dom {m}")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
 

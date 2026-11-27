@@ -79,7 +79,7 @@ def knowsOther : Model Agent Name Dom ℚ where
   ret := .expect (.op₂ eq (.query .listener (.choice .uGuess)) (.choice .u))
 
 theorem rows_speakerKnows :
-    Core.Model.rows dom speakerKnows =
+    Model.rows dom speakerKnows =
       some [[1/2, 1/2, 0],
             [0,   0,   1/2],
             [1/2, 0,   0],
@@ -87,7 +87,7 @@ theorem rows_speakerKnows :
   decide +kernel
 
 theorem rows_nestedKnows :
-    Core.Model.rows dom nestedKnows =
+    Model.rows dom nestedKnows =
       some [[1/2, 1/2, 0],
             [0,   0,   1/2],
             [1/2, 0,   0],
@@ -95,7 +95,7 @@ theorem rows_nestedKnows :
   decide +kernel
 
 theorem rows_knowsOther :
-    Core.Model.rows dom knowsOther =
+    Model.rows dom knowsOther =
       some [[1/3, 1/3, 1/3],
             [1/6, 1/6, 1/6],
             [1/6, 1/6, 1/6],

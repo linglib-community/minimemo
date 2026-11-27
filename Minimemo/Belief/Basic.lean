@@ -28,29 +28,31 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 
 ## Main definitions
 
-* `Memo.Core.Factor X K`: the type `(∀ i, X i) → K` of factors.
-* `Memo.Core.Factor.sumOver s f`: the sum of `f` over the values of the choices in `s`.
-* `Memo.Core.Belief X K`: a set of uncertain choices with a factor.
-* `Memo.Core.Belief.chooses b i w`: the belief after the choice `i` with weight `w`.
-* `Memo.Core.Belief.observes b i`: the belief after the choice `i` is observed.
-* `Memo.Core.Belief.expect b e`: the expectation of the factor `e`.
-* `Memo.Core.Belief.IsNormalized b`: at every assignment, the factor of `b` sums to one or to zero
+* `Memo.Factor X K`: the type `(∀ i, X i) → K` of factors.
+* `Memo.Factor.sumOver s f`: the sum of `f` over the values of the choices in `s`.
+* `Memo.Belief X K`: a set of uncertain choices with a factor.
+* `Memo.Belief.chooses b i w`: the belief after the choice `i` with weight `w`.
+* `Memo.Belief.choice i w`: the belief in which only the choice `i` is uncertain, with weight
+  `w`.
+* `Memo.Belief.observes b i`: the belief after the choice `i` is observed.
+* `Memo.Belief.expect b e`: the expectation of the factor `e`.
+* `Memo.Belief.IsNormalized b`: at every assignment, the factor of `b` sums to one or to zero
   over the uncertain choices.
 
 ## Main results
 
-* `Memo.Core.Factor.sumOver_union`: the sum over a union of two disjoint sets of choices is the
+* `Memo.Factor.sumOver_union`: the sum over a union of two disjoint sets of choices is the
   sum over one of the sum over the other.
-* `Memo.Core.Belief.observes_isNormalized`: the belief after an observation is normalized.
-* `Memo.Core.Belief.chooses_mul_left`: a weight matters only up to a nonzero factor.
-* `Memo.Core.Belief.IsNormalized.chooses`: the belief after a choice is normalized, if the belief
+* `Memo.Belief.observes_isNormalized`: the belief after an observation is normalized.
+* `Memo.Belief.chooses_mul_left`: a weight matters only up to a nonzero factor.
+* `Memo.Belief.IsNormalized.chooses`: the belief after a choice is normalized, if the belief
   before it is, its factor does not depend on the new choice, and the weight has a nonzero sum
   over that choice.
 -/
 
 @[expose] public section
 
-namespace Memo.Core
+namespace Memo
 
 variable {ι : Type*} [DecidableEq ι] (X : ι → Type*) (K : Type*)
 
@@ -103,8 +105,14 @@ def IsNormalized (b : Belief X K) : Prop :=
 /-- The belief after a **choice** `i` with weight `w`: the choice becomes uncertain, and the factor
 is multiplied by `w` divided by its sum over `i`. -/
 def chooses (b : Belief X K) (i : ι) (w : Factor X K) : Belief X K where
-  uncertain := insert i b.uncertain
+  uncertain := b.uncertain ∪ {i}
   weight := b.weight * (w / w.sumOver {i})
+
+/-- The belief in which only the choice `i` is uncertain, with the weight `w` divided by its sum
+over `i`: the probability of each value of the choice. -/
+abbrev choice (i : ι) (w : Factor X K) : Belief X K where
+  uncertain := {i}
+  weight := w / w.sumOver {i}
 
 /-- The belief after the choice `i` is **observed**: the choice becomes certain, and the factor is
 divided by its sum over the choices that remain uncertain. -/
@@ -156,10 +164,9 @@ theorem IsNormalized.chooses {b : Belief X K} {i : ι} {w : Factor X K} (hb : b.
     rw [div_self h0, mul_one]
   intro σ
   have hd : Disjoint b.uncertain {i} := Finset.disjoint_singleton_right.2 hi
-  have hu : insert i b.uncertain = b.uncertain ∪ {i} := by rw [Finset.union_comm, Finset.insert_eq]
-  simp only [Belief.chooses, hu, Factor.sumOver_union hd, inner]
+  simp only [Belief.chooses, Factor.sumOver_union hd, inner]
   exact hb σ
 
 end Belief
 
-end Memo.Core
+end Memo

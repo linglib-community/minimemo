@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Core.Program
+public import Minimemo.Program
 public import Minimemo.Syntax
 
 /-!
@@ -26,21 +26,21 @@ through these links.
 
 ## Main definitions
 
-* `Memo.Core.Scope A N D`: the belief, choices and agents that a mind is aware of.
-* `Memo.Core.Expr.term dom e S g`: the term of the expression `e` in the scope `S`, with the
+* `Memo.Scope A N D`: the belief, choices and agents that a mind is aware of.
+* `Memo.Expr.term dom e S g`: the term of the expression `e` in the scope `S`, with the
   choices that it depends on.
-* `Memo.Core.Stmt.steps dom s S g`: the scope after the statement `s`, with its steps added to
+* `Memo.Stmt.steps dom s S g`: the scope after the statement `s`, with its steps added to
   `g`.
-* `Memo.Core.Model.program dom M`: the program of the model `M`, if memo accepts the model.
-* `Memo.Core.Model.entries dom M`: the entries of the array of `M`, in row-major order.
-* `Memo.Core.Model.rows dom M`: the same entries, as rows along the last axis.
+* `Memo.Model.program dom M`: the program of the model `M`, if memo accepts the model.
+* `Memo.Model.entries dom M`: the entries of the array of `M`, in row-major order.
+* `Memo.Model.rows dom M`: the same entries, as rows along the last axis.
 -/
 
 @[expose] public section
 
 universe u
 
-namespace Memo.Core
+namespace Memo
 
 /-- A choice in a scope has a number, a domain, a flag that says whether the agent of the scope is
 certain of its value, and a flag that says whether the agent has the choice from outside, by
@@ -258,4 +258,4 @@ def Model.entries [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (Li
 def Model.rows [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List (List K)) :=
   (Model.program dom M).map Program.rows
 
-end Memo.Core
+end Memo

@@ -1,4 +1,4 @@
 import Minimemo.Example.NaiveListener
 open Memo Memo.NaiveListener
 
-#eval Core.Model.rows dom model
+#eval Model.rows dom model
