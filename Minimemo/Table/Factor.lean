@@ -14,110 +14,71 @@ public import Mathlib.Tactic.SplitIfs
 
 This file proves that the operations on stored tables compute the operations on factors.
 
-Fix a size for every variable. A table is sized if each of its variables has that size. An
-assignment of a position below its size to every variable is a choice of a value for every choice,
-so a table gives a factor, `Memo.Table.toFactor`. The product and the quotient of sized tables give
-the product and the quotient of their factors, and the sum of a sized table over a list of
+An assignment of a position below its size to every variable is a choice of a value for every
+choice, so a table gives a factor, `Memo.Table.toFactor`. The table that combines tables with an
+operator gives the operator applied to their factors, and the sum of a table over a list of
 variables gives the sum of its factor over those choices.
 
 ## Main definitions
 
-* `Memo.Table.Sized size t`: each variable of the table `t` has the size that `size` gives it.
 * `Memo.Table.toFactor size t`: the factor of the table `t`.
 
 ## Main results
 
+* `Memo.Table.get_op`, `Memo.Table.get_sumOut`, `Memo.Table.get_rename`: the numbers of the tables
+  that the operations build.
+* `Memo.Table.toFactor_op`: the factor of a combination of tables.
 * `Memo.Table.toFactor_sumOver`: the factor of a sum over a list of variables.
-* `Memo.Table.get_rename`: a renamed table is read through its links.
 -/
 
 @[expose] public section
 
 namespace Memo.Table
 
-variable {K : Type*} {size : ℕ → ℕ}
+variable {K : Type*} {size : ℕ → ℕ} {σ : ℕ → ℕ}
 
-/-- A table is **sized** if each of its variables has the size that `size` gives it. -/
-def Sized (size : ℕ → ℕ) (t : Table K) : Prop := ∀ v ∈ t.vars, v.2 = size v.1
-
-theorem index_congr {vars : List (ℕ × ℕ)} {σ σ' : ℕ → ℕ} (h : ∀ v ∈ vars, σ v.1 = σ' v.1) :
-    index vars σ = index vars σ' := by
+theorem index_congr {vars : List ℕ} {σ σ' : ℕ → ℕ} (h : ∀ i ∈ vars, σ i = σ' i) :
+    index size vars σ = index size vars σ' := by
   rw [index_eq_place, index_eq_place, List.map_congr_left h]
 
 /-- A table has the same number at two assignments that agree on its variables. -/
-theorem get_congr [Zero K] (t : Table K) {σ σ' : ℕ → ℕ} (h : ∀ v ∈ t.vars, σ v.1 = σ' v.1) :
-    t.get σ = t.get σ' := by
+theorem get_congr [Zero K] (t : Table K) {σ σ' : ℕ → ℕ} (h : ∀ i ∈ t.vars, σ i = σ' i) :
+    t.get size σ = t.get size σ' := by
   rw [get, get, index_congr h]
 
-theorem mem_insertVar {v w : ℕ × ℕ} {l : List (ℕ × ℕ)} (h : w ∈ insertVar v l) :
-    w = v ∨ w ∈ l := by
+theorem mem_insertVar {i j : ℕ} {l : List ℕ} : j ∈ insertVar i l ↔ j = i ∨ j ∈ l := by
   induction l with
-  | nil => simpa [insertVar] using h
-  | cons u us ih =>
-    simp only [insertVar] at h
-    split_ifs at h
-    · simpa using h
-    · exact .inr h
-    · rcases List.mem_cons.1 h with rfl | h
-      · exact .inr List.mem_cons_self
-      · exact (ih h).imp id (List.mem_cons_of_mem _)
-
-theorem key_mem_insertVar {v : ℕ × ℕ} {l : List (ℕ × ℕ)} {k : ℕ}
-    (h : k = v.1 ∨ k ∈ l.map (·.1)) : k ∈ (insertVar v l).map (·.1) := by
-  induction l with
-  | nil => simpa [insertVar] using h
-  | cons u us ih =>
+  | nil => simp [insertVar]
+  | cons k ks ih =>
     simp only [insertVar]
-    simp only [List.map_cons, List.mem_cons] at h
     split_ifs with h₁ h₂
-    · simpa using h
-    · rcases h with rfl | h
-      · simp [h₂]
-      · simpa using h
-    · rcases h with rfl | rfl | h
-      · exact List.mem_cons_of_mem _ (ih (.inl rfl))
-      · simp
-      · exact List.mem_cons_of_mem _ (ih (.inr h))
+    · simp
+    · subst h₂
+      simp
+    · simp only [List.mem_cons, ih]
+      tauto
 
-theorem mem_distinct {xs : List (ℕ × ℕ)} {w : ℕ × ℕ} (h : w ∈ distinct xs) : w ∈ xs := by
+theorem mem_distinct {xs : List ℕ} {j : ℕ} : j ∈ distinct xs ↔ j ∈ xs := by
   induction xs with
-  | nil => simp [distinct] at h
+  | nil => simp [distinct]
   | cons x xs ih =>
-    rcases mem_insertVar (v := x) (l := distinct xs) h with rfl | h
-    · exact List.mem_cons_self
-    · exact List.mem_cons_of_mem _ (ih h)
+    show j ∈ insertVar x (distinct xs) ↔ _
+    rw [mem_insertVar, ih, List.mem_cons]
 
-theorem key_mem_distinct {xs : List (ℕ × ℕ)} {k : ℕ} (h : k ∈ xs.map (·.1)) :
-    k ∈ (distinct xs).map (·.1) := by
-  induction xs with
-  | nil => simp at h
-  | cons x xs ih =>
-    refine key_mem_insertVar (v := x) (l := distinct xs) ?_
-    rcases List.mem_cons.1 h with h | h
-    · exact .inl h
-    · exact .inr (ih h)
-
-/-- Two assignments that agree on the variables of `distinct xs` agree on those of `xs`. -/
-theorem agree_of_distinct {xs : List (ℕ × ℕ)} {σ σ' : ℕ → ℕ}
-    (h : ∀ v ∈ distinct xs, σ v.1 = σ' v.1) : ∀ w ∈ xs, σ w.1 = σ' w.1 := fun w hw ↦ by
-  obtain ⟨v, hv, hvw⟩ := List.mem_map.1 (key_mem_distinct (List.mem_map_of_mem (f := (·.1)) hw))
-  have := h v hv
-  rwa [hvw] at this
-
-theorem sized_ofFn (vars : List (ℕ × ℕ)) (f : (ℕ → ℕ) → K) :
-    (ofFn vars f).Sized size ↔ ∀ v ∈ vars, v.2 = size v.1 := Iff.rfl
-
-theorem sized_const (k : K) : (const k).Sized size := fun _ h ↦ by simp [const] at h
-
-section Rename
-
-variable [Zero K] {t : Table K} {σ : ℕ → ℕ}
+/-- The table that combines tables with `f` has, at an assignment in range, the value of `f` at
+their numbers. -/
+theorem get_op [Zero K] {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K)
+    (hσ : ∀ i, σ i < size i) : (op size f ts).get size σ = f fun i ↦ (ts i).get size σ := by
+  refine get_ofFn _ _ (fun i _ ↦ hσ i) fun σ₁ σ₂ h ↦ ?_
+  congr 1
+  funext i
+  exact (ts i).get_congr fun v hv ↦
+    h v (mem_distinct.2 (List.mem_flatMap.2 ⟨i, List.mem_finRange i, hv⟩))
 
 /-- A renamed table has, at an assignment in range, the number of the table at the assignment read
-through the links, if the table is sized and each link joins two variables of the same size. -/
-theorem get_rename {links : List (ℕ × ℕ)} (ht : t.Sized size)
-    (hl : ∀ i, size ((links.lookup i).getD i) = size i) (hσ : ∀ i, σ i < size i) :
-    (t.rename links).get σ = t.get fun i ↦ σ ((links.lookup i).getD i) := by
+through the links. -/
+theorem get_rename [Zero K] (links : List (ℕ × ℕ)) (t : Table K) (hσ : ∀ i, σ i < size i) :
+    (t.rename size links).get size σ = t.get size fun i ↦ σ ((links.lookup i).getD i) := by
   unfold Table.rename
   dsimp only
   split_ifs with h
@@ -125,19 +86,20 @@ theorem get_rename {links : List (ℕ × ℕ)} (ht : t.Sized size)
     have := List.all_eq_true.1 h v hv
     rw [beq_iff_eq] at this
     rw [this]
-  · refine get_ofFn _ _ (fun v hv ↦ ?_) fun σ₁ σ₂ hagree ↦ ?_
-    · obtain ⟨v₀, hv₀, rfl⟩ := List.mem_map.1 (mem_distinct hv)
-      rw [ht v₀ hv₀, ← hl v₀.1]
-      exact hσ _
-    · refine t.get_congr fun v hv ↦ ?_
-      exact agree_of_distinct hagree _ (List.mem_map_of_mem (f := fun v ↦
-        ((links.lookup v.1).getD v.1, v.2)) hv)
+  · refine get_ofFn _ _ (fun i _ ↦ hσ i) fun σ₁ σ₂ hagree ↦ ?_
+    exact t.get_congr fun v hv ↦ hagree _ (mem_distinct.2 (List.mem_map_of_mem hv))
 
-end Rename
+theorem rename_nil [Zero K] (t : Table K) : t.rename size [] = t := by
+  simp [Table.rename]
+
+theorem getD_map_zero {α : Type*} [Zero α] (h : α → α) (h0 : h 0 = 0) (a : Array α) (k : ℕ) :
+    (a.map h).getD k 0 = h (a.getD k 0) := by
+  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_map]
+  cases a[k]? <;> simp [h0]
 
 section Sum
 
-variable [AddCommMonoid K] {t : Table K} {σ : ℕ → ℕ}
+variable [AddCommMonoid K]
 
 theorem foldl_add_range (g : ℕ → K) (n : ℕ) :
     (List.range n).foldl (fun total j ↦ total + g j) 0 = ∑ j ∈ Finset.range n, g j := by
@@ -145,63 +107,26 @@ theorem foldl_add_range (g : ℕ → K) (n : ℕ) :
   | zero => rfl
   | succ n ih => rw [List.range_succ, List.foldl_append, ih, Finset.sum_range_succ]; rfl
 
-theorem Sized.sumOut (i : ℕ) (ht : t.Sized size) : (t.sumOut i).Sized size := by
+/-- The sum of a table over a variable has, at an assignment in range, the sum of the numbers of
+the table over the positions of that variable, whether or not the table has it. -/
+theorem get_sumOut (i : ℕ) (t : Table K) (hσ : ∀ i, σ i < size i) :
+    (t.sumOut size i).get size σ =
+      ∑ j ∈ Finset.range (size i), t.get size (Function.update σ i j) := by
   unfold Table.sumOut
-  cases t.vars.find? (·.1 == i) with
-  | none => exact ht
-  | some v => exact fun w hw ↦ ht w (List.mem_of_mem_filter hw)
-
-/-- The sum of a sized table over one of its variables has, at an assignment in range, the sum of
-the numbers of the table over the positions of that variable. -/
-theorem get_sumOut {i : ℕ} (hi : i ∈ t.vars.map (·.1)) (ht : t.Sized size)
-    (hσ : ∀ i, σ i < size i) :
-    (t.sumOut i).get σ = ∑ j ∈ Finset.range (size i), t.get (Function.update σ i j) := by
-  unfold Table.sumOut
-  cases h : t.vars.find? (·.1 == i) with
-  | none =>
-    obtain ⟨v, hv, rfl⟩ := List.mem_map.1 hi
-    simpa using List.find?_eq_none.1 h v hv
-  | some v =>
-    have hv : v ∈ t.vars := List.mem_of_find?_eq_some h
-    have hvi : v.1 = i := by simpa using List.find?_some h
-    simp only
-    rw [get_ofFn _ _ (fun w hw ↦ by rw [ht w (List.mem_of_mem_filter hw)]; exact hσ _),
-      foldl_add_range, ht v hv, hvi]
+  split_ifs with hi
+  · rw [get_ofFn _ _ (fun i _ ↦ hσ i), foldl_add_range]
     intro σ₁ σ₂ hagree
     congr 1
     funext total j
     congr 1
-    refine t.get_congr fun w hw ↦ ?_
-    by_cases hw' : w.1 = i
-    · simp [hw']
-    · simpa [Function.update, hw'] using hagree w (List.mem_filter.2 ⟨hw, by simpa using hw'⟩)
-
-theorem getD_map_zero {α : Type*} [Zero α] (h : α → α) (h0 : h 0 = 0) (a : Array α) (k : ℕ) :
-    (a.map h).getD k 0 = h (a.getD k 0) := by
-  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_map]
-  cases a[k]? <;> simp [h0]
-
-theorem Sized.sumOver_singleton (v : ℕ × ℕ) (ht : t.Sized size) :
-    (t.sumOver [v]).Sized size := by
-  simp only [Table.sumOver, List.foldl_cons, List.foldl_nil]
-  split_ifs
-  · exact ht.sumOut _
-  · exact ht
-
-/-- The sum of a sized table over a variable has, at an assignment in range, the sum of the
-numbers of the table over the positions of that variable, whether or not the table has it. -/
-theorem get_sumOver_singleton (i : ℕ) (ht : t.Sized size) (hσ : ∀ i, σ i < size i) :
-    (t.sumOver [(i, size i)]).get σ =
-      ∑ j ∈ Finset.range (size i), t.get (Function.update σ i j) := by
-  simp only [Table.sumOver, List.foldl_cons, List.foldl_nil]
-  split_ifs with h
-  · refine get_sumOut ?_ ht hσ
-    obtain ⟨v, hv, hvi⟩ := List.any_eq_true.1 h
-    exact List.mem_map.2 ⟨v, hv, by simpa using hvi⟩
-  · have hi : ∀ w ∈ t.vars, w.1 ≠ i := fun w hw hwi ↦
-      h (List.any_eq_true.2 ⟨w, hw, by simpa using hwi⟩)
-    have hconst (j : ℕ) : t.get (Function.update σ i j) = t.get σ :=
-      t.get_congr fun w hw ↦ by simp [Function.update, hi w hw]
+    refine t.get_congr fun v hv ↦ ?_
+    by_cases hv' : v = i
+    · simp [hv']
+    · simpa [Function.update, hv'] using hagree v (List.mem_filter.2 ⟨hv, by simpa using hv'⟩)
+  · have hconst (j : ℕ) : t.get size (Function.update σ i j) = t.get size σ :=
+      t.get_congr fun v hv ↦ by
+        have : v ≠ i := fun h ↦ hi (h ▸ hv)
+        simp [Function.update, this]
     simp only [hconst]
     rw [Table.get, getD_map_zero _ (by simp), foldl_add_range]
     rfl
@@ -210,20 +135,27 @@ end Sum
 
 section Factor
 
-variable [Semifield K] {s t : Table K}
+variable [Semifield K]
 
 /-- The **factor of a table**: its number at each assignment of a position below its size to every
 variable. -/
 def toFactor (size : ℕ → ℕ) (t : Table K) : Factor (fun i ↦ Fin (size i)) K :=
-  fun σ ↦ t.get fun i ↦ σ i
+  fun σ ↦ t.get size fun i ↦ σ i
+
+/-- The factor of the table that combines tables with `f` is `f` at their factors. -/
+theorem toFactor_op {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K)
+    (σ : ∀ i, Fin (size i)) :
+    toFactor size (op size f ts) σ = f fun i ↦ toFactor size (ts i) σ :=
+  get_op f ts fun i ↦ (σ i).isLt
 
 /-- The factor of the sum of a table over a variable is the sum of its factor over that choice. -/
-theorem toFactor_sumOver_singleton (i : ℕ) (ht : t.Sized size) :
-    toFactor size (t.sumOver [(i, size i)]) = (toFactor size t).sumOver {i} := by
+theorem toFactor_sumOut (i : ℕ) (t : Table K) :
+    toFactor size (t.sumOut size i) = (toFactor size t).sumOver {i} := by
   funext σ
   simp only [toFactor, Factor.sumOver]
-  rw [get_sumOver_singleton i ht fun k ↦ (σ k).isLt,
-    ← Fin.sum_univ_eq_sum_range (fun j ↦ t.get (Function.update (fun k ↦ (σ k : ℕ)) i j)) (size i)]
+  rw [get_sumOut i t fun k ↦ (σ k).isLt,
+    ← Fin.sum_univ_eq_sum_range (fun j ↦ t.get size (Function.update (fun k ↦ (σ k : ℕ)) i j))
+      (size i)]
   refine Fintype.sum_equiv (Equiv.piUnique (fun j : ({i} : Finset ℕ) ↦ Fin (size j))).symm _ _ ?_
   intro x
   congr 1
@@ -238,34 +170,26 @@ theorem toFactor_sumOver_singleton (i : ℕ) (ht : t.Sized size) :
     simpa [Function.updateFinset] using (hx _).symm
   · simp [Function.updateFinset, h]
 
+/-- The factor of the sum of a table over a list of distinct variables is the sum of its factor
+over those choices. -/
+theorem toFactor_sumOver (I : List ℕ) (hI : I.Nodup) (t : Table K) :
+    toFactor size (t.sumOver size I) = (toFactor size t).sumOver I.toFinset := by
+  induction I generalizing t with
+  | nil => simp [Table.sumOver]
+  | cons i I ih =>
+    have hd : Disjoint I.toFinset {i} := by simpa using (List.nodup_cons.1 hI).1
+    have h := ih (List.nodup_cons.1 hI).2 (t.sumOut size i)
+    rw [toFactor_sumOut, ← Factor.sumOver_union hd] at h
+    rw [List.toFinset_cons, Finset.insert_eq, Finset.union_comm]
+    exact h
+
 /-- The factor of a table does not depend on a choice that is not a variable of the table. -/
-theorem toFactor_updateFinset_singleton {i : ℕ} (hi : i ∉ t.vars.map (·.1))
+theorem toFactor_updateFinset_singleton {t : Table K} {i : ℕ} (hi : i ∉ t.vars)
     (σ : ∀ i, Fin (size i)) (τ : ∀ j : ({i} : Finset ℕ), Fin (size j)) :
     toFactor size t (Function.updateFinset σ {i} τ) = toFactor size t σ := by
   refine t.get_congr fun v hv ↦ ?_
-  have hne : v.1 ≠ i := fun h ↦ hi (h ▸ List.mem_map_of_mem hv)
+  have hne : v ≠ i := fun h ↦ hi (h ▸ hv)
   simp [Function.updateFinset, hne]
-
-theorem Sized.sumOver (I : List (ℕ × ℕ)) (ht : t.Sized size) : (t.sumOver I).Sized size := by
-  induction I generalizing t with
-  | nil => exact ht
-  | cons v I ih => exact ih (ht.sumOver_singleton v)
-
-/-- The factor of the sum of a table over a list of distinct variables is the sum of its factor
-over those choices. -/
-theorem toFactor_sumOver (I : List ℕ) (hI : I.Nodup) (ht : t.Sized size) :
-    toFactor size (t.sumOver (I.map fun i ↦ (i, size i))) =
-      (toFactor size t).sumOver I.toFinset := by
-  induction I generalizing t with
-  | nil =>
-    simp [Table.sumOver]
-  | cons i I ih =>
-    have hd : Disjoint I.toFinset {i} := by
-      simpa using (List.nodup_cons.1 hI).1
-    have h := ih (List.nodup_cons.1 hI).2 (ht.sumOver_singleton (i, size i))
-    rw [toFactor_sumOver_singleton i ht, ← Factor.sumOver_union hd] at h
-    rw [List.toFinset_cons, Finset.insert_eq, Finset.union_comm]
-    exact h
 
 end Factor
 

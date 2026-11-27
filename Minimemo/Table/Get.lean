@@ -30,7 +30,7 @@ number with those digits, in the mixed radix of the sizes.
 
 namespace Memo.Table
 
-variable {K : Type*}
+variable {K : Type*} {size : ℕ → ℕ}
 
 /-- The place of a list of positions among the lists of positions for the given sizes. -/
 def place : List ℕ → List ℕ → ℕ
@@ -86,9 +86,9 @@ theorem getElem?_positions {js ms : List ℕ} (h : List.Forall₂ (· < ·) js m
       (fun k ↦ by rw [List.length_map, length_positions]) hjm (place_lt h), List.getElem?_map, ih]
     rfl
 
-theorem foldl_index (σ : ℕ → ℕ) (vars : List (ℕ × ℕ)) (a : ℕ) :
-    vars.foldl (fun at' v ↦ at' * v.2 + σ v.1) a =
-      a * (vars.map (·.2)).prod + place (vars.map (·.2)) (vars.map fun v ↦ σ v.1) := by
+theorem foldl_index (σ : ℕ → ℕ) (vars : List ℕ) (a : ℕ) :
+    vars.foldl (fun at' i ↦ at' * size i + σ i) a =
+      a * (vars.map size).prod + place (vars.map size) (vars.map σ) := by
   induction vars generalizing a with
   | nil => simp [place]
   | cons v vars ih =>
@@ -96,42 +96,41 @@ theorem foldl_index (σ : ℕ → ℕ) (vars : List (ℕ × ℕ)) (a : ℕ) :
     simp only [List.map_cons, List.prod_cons, place]
     ring
 
-theorem index_eq_place (vars : List (ℕ × ℕ)) (σ : ℕ → ℕ) :
-    index vars σ = place (vars.map (·.2)) (vars.map fun v ↦ σ v.1) := by
+theorem index_eq_place (vars : List ℕ) (σ : ℕ → ℕ) :
+    index size vars σ = place (vars.map size) (vars.map σ) := by
   rw [index, foldl_index, zero_mul, zero_add]
 
-theorem assign_map (vars : List (ℕ × ℕ)) (σ : ℕ → ℕ) (i : ℕ) :
-    assign vars (vars.map fun v ↦ σ v.1) i = if i ∈ vars.map (·.1) then σ i else 0 := by
+theorem assign_map (vars : List ℕ) (σ : ℕ → ℕ) (i : ℕ) :
+    assign vars (vars.map σ) i = if i ∈ vars then σ i else 0 := by
   unfold assign
   induction vars with
   | nil => simp
   | cons v vars ih =>
     simp only [List.map_cons, List.zip_cons_cons, List.lookup_cons, List.mem_cons]
-    by_cases h : i = v.1
+    by_cases h : i = v
     · simp [h]
-    · have hb : (i == v.1) = false := beq_false_of_ne h
+    · have hb : (i == v) = false := beq_false_of_ne h
       simp only [hb, h, false_or]
       exact ih
 
 /-- The table of a function has, at an assignment that is in range, the value of the function at
 the assignment that agrees with it on the variables of the table and is zero elsewhere. -/
-theorem get_ofFn_assign [Zero K] (vars : List (ℕ × ℕ)) (f : (ℕ → ℕ) → K) {σ : ℕ → ℕ}
-    (hσ : ∀ v ∈ vars, σ v.1 < v.2) :
-    (ofFn vars f).get σ = f (assign vars (vars.map fun v ↦ σ v.1)) := by
-  have h : List.Forall₂ (· < ·) (vars.map fun v ↦ σ v.1) (vars.map (·.2)) := by
+theorem get_ofFn_assign [Zero K] (vars : List ℕ) (f : (ℕ → ℕ) → K) {σ : ℕ → ℕ}
+    (hσ : ∀ i ∈ vars, σ i < size i) :
+    (ofFn size vars f).get size σ = f (assign vars (vars.map σ)) := by
+  have h : List.Forall₂ (· < ·) (vars.map σ) (vars.map size) := by
     rw [List.forall₂_map_left_iff, List.forall₂_map_right_iff, List.forall₂_same]
     exact hσ
   simp [get, ofFn, index_eq_place, getElem?_positions h]
 
 /-- The table of a function has the value of the function at every assignment that is in range,
 if the function depends on the variables of the table only. -/
-theorem get_ofFn [Zero K] (vars : List (ℕ × ℕ)) (f : (ℕ → ℕ) → K) {σ : ℕ → ℕ}
-    (hσ : ∀ v ∈ vars, σ v.1 < v.2)
-    (hf : ∀ σ σ' : ℕ → ℕ, (∀ v ∈ vars, σ v.1 = σ' v.1) → f σ = f σ') :
-    (ofFn vars f).get σ = f σ := by
+theorem get_ofFn [Zero K] (vars : List ℕ) (f : (ℕ → ℕ) → K) {σ : ℕ → ℕ}
+    (hσ : ∀ i ∈ vars, σ i < size i)
+    (hf : ∀ σ σ' : ℕ → ℕ, (∀ i ∈ vars, σ i = σ' i) → f σ = f σ') :
+    (ofFn size vars f).get size σ = f σ := by
   rw [get_ofFn_assign vars f hσ]
-  refine hf _ _ fun v hv ↦ ?_
-  have hmem : v.1 ∈ vars.map (·.1) := List.mem_map_of_mem hv
-  simp only [assign_map, hmem, ite_true]
+  refine hf _ _ fun i hi ↦ ?_
+  simp only [assign_map, hi, ite_true]
 
 end Memo.Table

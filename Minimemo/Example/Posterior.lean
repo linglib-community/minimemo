@@ -137,24 +137,14 @@ theorem table_eq (p : Program Dom Fn) (hp : Model.program model = some p) :
   obtain rfl := Option.some.inj hp
   rfl
 
-theorem sized_prior : ∀ x ∈ prior dom w, x.Sized (size dom) :=
-  sized_push (sized_push (sized_push sized_one (Term.sized_eval _ _ sized_one))
-    (Term.sized_eval _ _ (sized_push sized_one (Term.sized_eval _ _ sized_one))))
-    (Term.sized_eval _ _ (sized_push (sized_push sized_one (Term.sized_eval _ _ sized_one))
-      (Term.sized_eval _ _ (sized_push sized_one (Term.sized_eval _ _ sized_one)))))
-
-theorem sized_thinks : ∀ x ∈ thinks dom w, x.Sized (size dom) :=
-  sized_push (sized_prior dom w) (Term.sized_eval _ _ (sized_prior dom w))
-
 /-- The weight of the utterance in the program is `w` at the values of the utterance and of the
 referent. -/
-theorem said_apply {W : Array (Table ℝ≥0)} (hW : ∀ x ∈ W, x.Sized (size dom))
-    (σ : ∀ i, Fin (size dom i)) :
+theorem said_apply (W : Array (Table ℝ≥0)) (σ : ∀ i, Fin (size dom i)) :
     Table.toFactor (size dom) (said.eval (interp dom w) (size dom) W) σ =
       w ((dom .U).val (σ 3)) ((dom .R).val (σ 2)) := by
   show Table.toFactor (size dom)
     ((Term.rename [] (Term.op (.inr Fn.w) _)).eval (interp dom w) (size dom) W) σ = _
-  rw [Term.eval_rename_nil, Term.toFactor_op hW]
+  rw [Term.eval_rename_nil, Term.toFactor_op]
   show w (Table.toFactor (size dom)
       ((Term.val 3 Dom.U : Term Dom Fn).eval (interp dom w) (size dom) W) σ)
     (Table.toFactor (size dom)
@@ -177,16 +167,15 @@ theorem measure_joint (σ : ∀ i, Fin (size dom i)) :
             Measure (∀ j : ({3} : Finset ℕ), Fin (size dom j)))).map
         (Equiv.piFinsetUnion (fun i ↦ Fin (size dom i))
           (Finset.disjoint_singleton_right.2 (by decide : (3 : ℕ) ∉ ({2} : Finset ℕ)))) :=
-  Term.measure_chooses (sized_prior dom w) (arith dom w) 2 {2} 3 (.ref 3) (by decide)
-    (by rw [vars_prior]; simp) σ
+  Term.measure_chooses (W := prior dom w) (size := size dom) (arith dom w) 2 {2} 3 (.ref 3)
+    (by decide) (by rw [vars_prior]; simp) σ
 
 /-- The weight in that kernel is the weight of the utterance, `w`. -/
 theorem ref_said (σ : ∀ i, Fin (size dom i)) :
     Table.toFactor (size dom)
         ((Term.ref 3 : Term Dom Fn).eval (interp dom w) (size dom) (prior dom w)) σ =
       w ((dom .U).val (σ 3)) ((dom .R).val (σ 2)) :=
-  said_apply dom w (sized_push (sized_push sized_one (Term.sized_eval _ _ sized_one))
-    (Term.sized_eval _ _ (sized_push sized_one (Term.sized_eval _ _ sized_one)))) σ
+  said_apply dom w _ σ
 
 /-- After the observation, the belief of the listener is the joint measure conditioned on the
 utterance, as a measure on the referent. -/
@@ -196,7 +185,7 @@ theorem measure_posterior (σ : ∀ i, Fin (size dom i)) :
           {τ | τ ⟨3, by simp⟩ = σ 3}]).map
         (Finset.restrict₂ (π := fun i ↦ Fin (size dom i))
           (Finset.erase_subset 3 ({2} ∪ {3} : Finset ℕ))) :=
-  Term.measure_observes (sized_thinks dom w) (arith dom w) 4 ({2} ∪ {3}) 3 [2]
+  Term.measure_observes (W := thinks dom w) (size := size dom) (arith dom w) 4 ({2} ∪ {3}) 3 [2]
     (List.nodup_singleton 2) (by decide) (by decide) σ
 
 end

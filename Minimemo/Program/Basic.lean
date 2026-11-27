@@ -175,9 +175,6 @@ structure Program (D : Type u) (F : ℕ → Type u) : Type u where
 def Program.term {D : Type u} {F : ℕ → Type u} (p : Program D F) : Term D F :=
   p.steps.foldr .bind p.ret
 
-/-- A list of choices, each with its size. -/
-def withSizes (size : ℕ → ℕ) (I : List ℕ) : List (ℕ × ℕ) := I.map fun i ↦ (i, size i)
-
 variable {D : Type u} {F : ℕ → Type u} {K : Type u} (I : Interp D F K)
 
 /-- The size of the choice `i` of a program: the size of its domain. -/
@@ -185,18 +182,17 @@ def Program.size (p : Program D F) (i : ℕ) : ℕ := (p.doms[i]?.map fun d ↦ 
 
 variable [Semifield K] [LinearOrder K] (size : ℕ → ℕ)
 
-/-- The **table of a term**, when `W` holds the tables so far. A link between two choices of
-different sizes is not followed. -/
+/-- The **table of a term**, when `W` holds the tables so far. -/
 def Term.eval (W : Array (Table K)) : Term D F → Table K
   | .lit q => .const (I.lit q)
   | .op o ts =>
     let tables := Array.ofFn fun i ↦ (ts i).eval W
-    .op (I.op o) fun i ↦ tables.getD i (.const 0)
-  | .val i d => .ofFn [(i, size i)] fun σ ↦ (I.dom d).val (σ i)
+    .op size (I.op o) fun i ↦ tables.getD i (.const 0)
+  | .val i d => .ofFn size [i] fun σ ↦ (I.dom d).val (σ i)
   | .ref w => W.getD w (.const 1)
-  | .sum over t => (t.eval W).sumOver (withSizes size over)
-  | .rename links t => (t.eval W).rename (links.filter fun l ↦ size l.1 == size l.2)
-  | .best i t => (t.eval W).best i (size i)
+  | .sum over t => (t.eval W).sumOver size over
+  | .rename links t => (t.eval W).rename size links
+  | .best i t => (t.eval W).best size i
   | .bind t₁ t₂ => t₂.eval (W.push (t₁.eval W))
 
 /-- The table that a program returns: the table of its term, when the only table is the number
@@ -206,17 +202,16 @@ def Program.table (p : Program D F) : Table K := p.term.eval I (p.size I) #[.con
 /-- The entries of the array of a program, in row-major order. -/
 def Program.entries (p : Program D F) : List K :=
   let t := p.table I
-  (Table.ofFn (withSizes (p.size I) p.axes) fun σ ↦ t.get σ).data.toList
+  (Table.ofFn (p.size I) p.axes fun σ ↦ t.get (p.size I) σ).data.toList
 
 /-- The rows of the array of a program: one list along the last axis for each choice of a position
 on the other axes, in row-major order. -/
 def Program.rows (p : Program D F) : List (List K) :=
   let t := p.table I
-  let axes := withSizes (p.size I) p.axes
-  match axes.getLast? with
-  | none => [[t.get fun _ ↦ 0]]
+  match p.axes.getLast? with
+  | none => [[t.get (p.size I) fun _ ↦ 0]]
   | some last =>
-    (Table.positions (axes.dropLast.map (·.2))).map fun js ↦
-      (List.range last.2).map fun j ↦ t.get (Table.assign axes (js ++ [j]))
+    (Table.positions (p.axes.dropLast.map (p.size I))).map fun js ↦
+      (List.range (p.size I last)).map fun j ↦ t.get (p.size I) (Table.assign p.axes (js ++ [j]))
 
 end Memo

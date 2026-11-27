@@ -7,7 +7,6 @@ public import Minimemo.Table.Get
 public import Minimemo.Table.Factor
 public import Minimemo.Table.Map
 public import Minimemo.Program.Basic
-public import Minimemo.Program.Sized
 public import Minimemo.Program.Belief
 public import Minimemo.Program.Measure
 public import Minimemo.Program.Map

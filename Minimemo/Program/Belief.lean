@@ -5,7 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Program.Sized
+public import Minimemo.Program.Basic
+public import Minimemo.Table.Factor
 
 /-!
 # Terms as operations on beliefs
@@ -16,8 +17,7 @@ those statements do.
 A table with a set of uncertain choices is a belief, `Memo.Table.toBelief`. The table of the term
 of a choice is the belief after the choice, and likewise for an observation, an event and a
 forgetting; the table of the term of an expectation is the expectation in the belief. These hold
-when the tables so far are sized, as the tables of a program are, and when the interpretation
-gives the product and the quotient their meaning, `Memo.Interp.Arith`.
+when the interpretation gives the product and the quotient their meaning, `Memo.Interp.Arith`.
 
 ## Main definitions
 
@@ -66,9 +66,7 @@ choice. -/
 theorem toFactor_val (i : ℕ) (d : D) (σ : ∀ i, Fin (size i)) :
     Table.toFactor size ((Term.val i d : Term D F).eval J size W) σ = (J.dom d).val (σ i) := by
   rw [Term.eval]
-  exact Table.get_ofFn _ _ (fun x hx ↦ by
-    obtain rfl : x = (i, size i) := by simpa using hx
-    exact (σ i).isLt) fun σ₁ σ₂ h ↦ by rw [h (i, size i) (by simp)]
+  exact Table.get_ofFn _ _ (fun x _ ↦ (σ x).isLt) fun σ₁ σ₂ h ↦ by rw [h i (by simp)]
 
 /-- The table of a reference is the table that it names. -/
 theorem toFactor_ref (w : ℕ) :
@@ -77,10 +75,7 @@ theorem toFactor_ref (w : ℕ) :
 
 /-- A term read through no links has the table of the term. -/
 theorem eval_rename_nil (t : Term D F) : (Term.rename [] t).eval J size W = t.eval J size W := by
-  rw [Term.eval, List.filter_nil, Table.rename_nil]
-
-variable (hW : ∀ x ∈ W, x.Sized size)
-include hW
+  rw [Term.eval, Table.rename_nil]
 
 /-- The table of an operator applied to terms has, at an assignment, the value of the operator at
 the numbers of their tables. -/
@@ -89,15 +84,14 @@ theorem toFactor_op {k : ℕ} (o : Prim k ⊕ F k) (ts : Fin k → Term D F) (σ
       J.op o fun i ↦ Table.toFactor size ((ts i).eval J size W) σ := by
   rw [Term.eval]
   simp only [Table.toFactor]
-  rw [Table.get_op _ (fun i ↦ by simpa using Term.sized_eval (I := J) (ts i) W hW)
-    fun i ↦ (σ i).isLt]
+  rw [Table.get_op _ _ fun i ↦ (σ i).isLt]
   simp
 
 /-- The factor of a sum over distinct choices is the sum of the factor over those choices. -/
 theorem toFactor_sum (I : List ℕ) (hI : I.Nodup) (t : Term D F) :
     Table.toFactor size ((Term.sum I t).eval J size W) =
       (Table.toFactor size (t.eval J size W)).sumOver I.toFinset := by
-  rw [Term.eval, withSizes, Table.toFactor_sumOver I hI (Term.sized_eval (I := J) t W hW)]
+  rw [Term.eval, Table.toFactor_sumOver I hI]
 
 variable (hJ : J.Arith)
 include hJ
@@ -106,14 +100,14 @@ theorem toFactor_mul (a b : Term D F) :
     Table.toFactor size ((Term.mul a b).eval J size W) =
       Table.toFactor size (a.eval J size W) * Table.toFactor size (b.eval J size W) := by
   funext σ
-  rw [Term.mul, toFactor_op hW, hJ.mul]
+  rw [Term.mul, toFactor_op, hJ.mul]
   rfl
 
 theorem toFactor_div (a b : Term D F) :
     Table.toFactor size ((Term.div a b).eval J size W) =
       Table.toFactor size (a.eval J size W) / Table.toFactor size (b.eval J size W) := by
   funext σ
-  rw [Term.div, toFactor_op hW, hJ.div]
+  rw [Term.div, toFactor_op, hJ.div]
   rfl
 
 variable (w : ℕ) (u : Finset ℕ)
@@ -124,7 +118,7 @@ theorem toBelief_choosesMany (I : List ℕ) (hI : I.Nodup) (t : Term D F) :
       (Table.toBelief size u (W.getD w (.const 1))).choosesMany I.toFinset
         (Table.toFactor size (t.eval J size W)) := by
   simp only [Table.toBelief, Belief.choosesMany, Term.chooses]
-  rw [toFactor_mul hW hJ, toFactor_div hW hJ, toFactor_sum hW I hI, toFactor_ref]
+  rw [toFactor_mul hJ, toFactor_div hJ, toFactor_sum I hI, toFactor_ref]
 
 /-- The table of a choice is the belief after the choice. -/
 theorem toBelief_chooses (i : ℕ) (t : Term D F) :
@@ -132,7 +126,7 @@ theorem toBelief_chooses (i : ℕ) (t : Term D F) :
       (Table.toBelief size u (W.getD w (.const 1))).chooses i
         (Table.toFactor size (t.eval J size W)) := by
   simpa [Belief.chooses_eq_choosesMany] using
-    toBelief_choosesMany hW hJ w u [i] (List.nodup_singleton i) t
+    toBelief_choosesMany hJ w u [i] (List.nodup_singleton i) t
 
 /-- The table of an observation is the belief after the observation, if the term sums over the
 choices that remain uncertain. -/
@@ -140,7 +134,7 @@ theorem toBelief_observes (i : ℕ) (I : List ℕ) (hI : I.Nodup) (hu : I.toFins
     Table.toBelief size (u.erase i) ((Term.observes w I : Term D F).eval J size W) =
       (Table.toBelief size u (W.getD w (.const 1))).observes i := by
   simp only [Table.toBelief, Belief.observes, Term.observes]
-  rw [toFactor_div hW hJ, toFactor_sum hW I hI, toFactor_ref, hu]
+  rw [toFactor_div hJ, toFactor_sum I hI, toFactor_ref, hu]
 
 /-- The table of an event is the belief with its factor multiplied by the weight. -/
 theorem toBelief_weighs (t : Term D F) :
@@ -148,7 +142,7 @@ theorem toBelief_weighs (t : Term D F) :
       (Table.toBelief size u (W.getD w (.const 1))).weighs
         (Table.toFactor size (t.eval J size W)) := by
   simp only [Table.toBelief, Belief.weighs, Term.weighs]
-  rw [toFactor_mul hW hJ, toFactor_ref]
+  rw [toFactor_mul hJ, toFactor_ref]
 
 omit hJ in
 /-- The table of a forgetting is the belief after the choices are forgotten. -/
@@ -156,7 +150,7 @@ theorem toBelief_forgets (I : List ℕ) (hI : I.Nodup) :
     Table.toBelief size (u \ I.toFinset) ((Term.forgets w I : Term D F).eval J size W) =
       (Table.toBelief size u (W.getD w (.const 1))).forgets I.toFinset := by
   simp only [Table.toBelief, Belief.forgets, Term.forgets]
-  rw [toFactor_sum hW I hI, toFactor_ref]
+  rw [toFactor_sum I hI, toFactor_ref]
 
 /-- The table of an expectation is the expectation of the factor of its term in the belief that
 it names, with the choices that it sums over as the uncertain ones. -/
@@ -165,7 +159,7 @@ theorem toFactor_expect (I : List ℕ) (hI : I.Nodup) (t : Term D F) :
       (Table.toBelief size I.toFinset (W.getD w (.const 1))).expect
         (Table.toFactor size (t.eval J size W)) := by
   simp only [Belief.expect, Term.expect]
-  rw [toFactor_sum hW I hI, toFactor_mul hW hJ, toFactor_ref]
+  rw [toFactor_sum I hI, toFactor_mul hJ, toFactor_ref]
 
 end Term
 

@@ -57,7 +57,7 @@ variable [Semifield K] [LinearOrder K] [Semifield L] [LinearOrder L] {size : ℕ
   {I : Interp D F K} {J : Interp D F L}
 
 theorem Term.eval_op {k : ℕ} (o : Prim k ⊕ F k) (ts : Fin k → Term D F) (W : Array (Table K)) :
-    (Term.op o ts).eval I size W = Table.op (I.op o) fun i ↦ (ts i).eval I size W := by
+    (Term.op o ts).eval I size W = Table.op size (I.op o) fun i ↦ (ts i).eval I size W := by
   rw [Term.eval]
   congr 1
   funext i
@@ -119,7 +119,7 @@ theorem Program.entries_map (p : Program D F) : p.entries J = (p.entries I).map 
 the first. -/
 theorem Program.rows_map (p : Program D F) : p.rows J = (p.rows I).map (List.map φ) := by
   simp only [Program.rows, p.table_map hφ h, p.size_map h, Table.get_map (map_zero φ)]
-  cases (withSizes (p.size I) p.axes).getLast? <;> simp
+  cases p.axes.getLast? <;> simp
 
 end Eval
 
