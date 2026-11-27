@@ -25,6 +25,11 @@ it ignores the variables that are not its own.
 * `Memo.Core.Table.const k`: the table with no variables and the number `k`.
 * `Memo.Core.Table.map₂ f s t`: the table that combines the numbers of `s` and `t` with `f`.
 * `Memo.Core.Table.sumOut i t`: the table `t` summed over its variable `i`.
+* `Memo.Core.Table.sumOver I t`: the table `t` summed over the variables in `I`, each with its
+  size.
+* `Memo.Core.Table.op f ts`: the table that combines the numbers of the tables `ts` with `f`.
+* `Memo.Core.Table.rename links t`: the table `t` with each variable replaced by the variable
+  that `links` gives it.
 -/
 
 @[expose] public section
@@ -81,6 +86,31 @@ def sumOut [Zero K] [Add K] (i : ℕ) (t : Table K) : Table K :=
   | some v =>
     ofFn (t.vars.filter (·.1 != i)) fun σ ↦
       (List.range v.2).foldl (fun total j ↦ total + t.get (Function.update σ i j)) 0
+
+/-- The table summed over the variables in `I`, each given with its size. A table that does not
+have one of these variables is constant in it, so the sum adds each number to itself that many
+times. -/
+def sumOver [Zero K] [Add K] (I : List (ℕ × ℕ)) (t : Table K) : Table K :=
+  I.foldl (fun t v ↦
+    if t.vars.any (·.1 == v.1) then t.sumOut v.1
+    else ⟨t.vars, t.data.map fun x ↦ (List.range v.2).foldl (fun total _ ↦ total + x) 0⟩) t
+
+/-- The table that combines the numbers of a family of tables with `f`. -/
+def op [Zero K] {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K) : Table K :=
+  ofFn ((List.finRange k).foldl (fun vars i ↦ union vars (ts i).vars) []) fun σ ↦
+    f fun i ↦ (ts i).get σ
+
+/-- The variables of a list, each once, in increasing order. -/
+def distinct (xs : List (ℕ × ℕ)) : List (ℕ × ℕ) :=
+  (xs.foldl (fun seen v ↦ if seen.any (·.1 == v.1) then seen else seen ++ [v]) []).mergeSort
+    fun a b ↦ a.1 ≤ b.1
+
+/-- The table with each variable replaced by the variable that `links` gives it. Two variables
+with the same replacement become one, and the table is read where they agree. -/
+def rename [Zero K] (links : List (ℕ × ℕ)) (t : Table K) : Table K :=
+  let r (i : ℕ) : ℕ := (links.lookup i).getD i
+  if t.vars.all fun v ↦ r v.1 == v.1 then t
+  else ofFn (distinct (t.vars.map fun v ↦ (r v.1, v.2))) fun σ ↦ t.get fun i ↦ σ (r i)
 
 instance [Zero K] [Mul K] : Mul (Table K) := ⟨map₂ (· * ·)⟩
 instance [Zero K] [Div K] : Div (Table K) := ⟨map₂ (· / ·)⟩

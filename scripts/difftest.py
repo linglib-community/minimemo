@@ -98,7 +98,8 @@ def main() -> int:
         if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
-    lean = ["import Minimemo.Semantics", "import Mathlib.Algebra.Order.Field.Rat", "",
+    lean = ["import Minimemo.Semantics", "import Minimemo.Core.Compile",
+            "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
@@ -150,6 +151,11 @@ def main() -> int:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
         m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
         lean.append(f"#eval Model.entries dom {m}")
+    lean.append('#eval "core"')
+    for f in raw:
+        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
+        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
+        lean.append(f"#eval if Core.Model.covered {m} then some (Core.Model.entries dom {m}) else none")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
 
@@ -157,12 +163,25 @@ def main() -> int:
     if run.returncode != 0:
         print(run.stdout + run.stderr)
         return 1
-    results = re.findall(r"some\s*\[(.*?)\]|(none)", run.stdout, re.S)
+    first, _, second = run.stdout.partition('"core"')
+    results = re.findall(r"some\s*\[(.*?)\]|(none)", first, re.S)
+    # the second implementation: its entries, "some none" if it rejects, "none" if not covered
+    core = re.findall(r"some\s*\(some\s*\[(.*?)\]\)|(some none)|(none)", second, re.S)
 
     scope = vars(examples)
     scope["memo"] = memo
-    failed = 0
-    for f, (entries, none) in zip(raw, results, strict=True):
+    failed = covered = core_failed = 0
+    for f, (entries, none), (core_entries, core_none, core_skip) in zip(raw, results, core, strict=True):
+        if not core_skip:
+            covered += 1
+            same = (bool(core_none) and bool(none)) or (
+                bool(core_entries) and core_entries.split() == entries.split())
+            core_failed += not same
+            if not same:
+                print(f"FAIL {f.__name__}  (the two implementations differ)")
+                if "-v" in sys.argv:
+                    print("   semantics:", entries or "none")
+                    print("   core:     ", core_entries or "none")
         # memo compiles a model in the scope of its caller, which has to be the module of the model
         sizes = [len(values[s.domain]) for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
         try:
@@ -187,7 +206,9 @@ def main() -> int:
             print("   memo:", [round(float(w), 5) for w in want])
             print("   lean:", [round(g, 5) for g in got])
     print(f"{len(raw) - failed} of {len(raw)} models agree")
-    return 1 if failed else 0
+    print(f"{covered - core_failed} of {covered} models agree in the second implementation "
+          f"({len(raw) - covered} not covered)")
+    return 1 if failed or core_failed else 0
 
 
 if __name__ == "__main__":

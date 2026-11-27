@@ -16,3 +16,5 @@ public import Minimemo.Example.Notation
 public import Minimemo.Core.Belief
 public import Minimemo.Core.OfTensor
 public import Minimemo.Core.Table
+public import Minimemo.Core.Program
+public import Minimemo.Core.Compile
