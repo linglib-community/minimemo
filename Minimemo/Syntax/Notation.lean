@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Syntax
+public import Minimemo.Syntax.Basic
 public meta import Lean.Elab.Term
 
 /-!

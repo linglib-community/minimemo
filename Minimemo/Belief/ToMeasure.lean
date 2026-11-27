@@ -5,7 +5,9 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Table
+public import Mathlib.Algebra.BigOperators.Field
+public import Mathlib.Data.Fintype.BigOperators
+public import Mathlib.Basic.NNReal.Basic
 public import Mathlib.MeasureTheory.Integral.Bochner.SumMeasure
 public import Mathlib.MeasureTheory.Integral.Lebesgue.Countable
 public import Mathlib.MeasureTheory.Measure.Dirac.Basic

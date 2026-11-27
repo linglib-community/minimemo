@@ -5,15 +5,14 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Semantics
+public import Minimemo.Compile
 public import Mathlib.Algebra.Order.Field.Rat
 
 /-!
 # The naive listener
 
 This file writes the first model of the memo paper as a memo program with rational numbers,
-computes the array that the semantics gives it, and proves that a second model returns the same
-array.
+computes its array, and proves that a second model returns the same array.
 
 There are four utterances, *green*, *pink*, *square* and *round*, and three referents, a green
 square, a green circle and a pink circle. A listener thinks that a speaker chooses a referent
@@ -22,9 +21,8 @@ observes the utterance and chooses a referent with weight equal to its probabili
 speaker chose that referent. The model returns the probability that the listener chooses each
 referent, in an array with an axis for the utterance and an axis for the referent.
 
-The semantics gives the model a tensor built from sums and quotients of the denotation. Its entry
-at an utterance and a referent is the value of the denotation there divided by the number of
-referents that the utterance describes.
+The entry of the array at an utterance and a referent is the value of the denotation there divided
+by the number of referents that the utterance describes.
 
 In the second model the listener thinks that the speaker chooses the utterance first, with weight
 the number of referents that it describes, and then a referent that it describes. The two
@@ -34,23 +32,19 @@ speakers choose in opposite orders. The listeners return the same array.
 
 * `Memo.NaiveListener.model`: the model, as a memo program.
 * `Memo.NaiveListener.utteranceFirst`: the model in which the speaker chooses the utterance first.
-* `Memo.NaiveListener.tensor`: the tensor that the model returns, written with the operations on
-  tensors.
+* `Memo.NaiveListener.rows`: the array that the model returns, as a list of rows.
 
 ## Main results
 
-* `Memo.NaiveListener.infer_model`: the semantics gives the model the tensor `tensor`.
-* `Memo.NaiveListener.tensor_entry`: the entry of the tensor at an utterance and a referent is
-  the denotation there divided by its sum over the referents.
-* `Memo.NaiveListener.tensor_rows`: the entries are those of the array that the paper prints.
-* `Memo.NaiveListener.infer_utteranceFirst`: the two models return the same array.
+* `Memo.NaiveListener.rows_eq`: the entries are those of the array that the paper prints.
+* `Memo.NaiveListener.rows_eq_denotes_div_count`: the entry at an utterance and a referent is the
+  denotation there divided by the number of referents that the utterance describes.
+* `Memo.NaiveListener.rows_utteranceFirst`: the two models return the same array.
 
 ## Implementation notes
 
-The results hold by computation. For `infer_model`, the choice maps, the checks that a value is
-known and the numbering of axes are decidable data, and Lean evaluates them. For the entries, the
-numbers are rational, and Lean evaluates the sums and quotients. The model can also be run:
-`#eval (infer dom model).map (·.rows 4 3)` prints the array.
+The results hold by computation: the numbers are rational, and Lean evaluates the program of the
+model. The model can also be run: `#eval Model.rows dom model` prints the array.
 
 The paper writes the weight of an utterance as `1 if denotes(u, r) else 0`; here `denotes` has the
 values one and zero.
@@ -64,8 +58,6 @@ values one and zero.
 @[expose] public section
 
 namespace Memo.NaiveListener
-
-open Tensor
 
 /-- The agents of the model. -/
 inductive Agent
@@ -119,51 +111,28 @@ def model : Model Agent Name Dom ℚ where
       (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
   ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
 
-/-- The weight of each utterance, on the axis 3, at each referent, on the axis 2. -/
-def weightSaid : Tensor ℚ := fun σ ↦ denotes (σ 3) (σ 2)
+/-- The number of referents that the utterance `u` describes. -/
+def count (u : ℚ) : ℚ := ∑ t ∈ Finset.range 3, denotes u t
 
-/-- The tensor of the listener after the two choices of the speaker: the probability of the
-referent and the utterance. -/
-def thinks : Tensor ℚ :=
-  scalar 1 * (scalar 1 / sumAxis 2 3 (scalar 1)) * (weightSaid / sumAxis 3 4 weightSaid)
+/-- The array that the model returns, as a list of rows: one for each utterance, with an entry for
+each referent. -/
+def rows : List (List ℚ) := (Model.rows dom model).getD []
 
-/-- The tensor of the listener after it observes the utterance, which is now on the axis 0: the
-probability of the referent given the utterance. -/
-def observes : Tensor ℚ :=
-  swapAxes 0 3 thinks / Tensor.sum [(2, 3)] (swapAxes 0 3 thinks)
-
-/-- The weight of each referent that the listener can pick, on the axis 4. -/
-def weightPick : Tensor ℚ :=
-  Tensor.sum [(2, 3)] ((fun σ ↦ eq (σ 2) (σ 4)) * observes)
-
-/-- The tensor of the observer after the choice of the listener. -/
-def observer : Tensor ℚ := scalar 1 * (weightPick / sumAxis 4 3 weightPick)
-
-/-- The tensor that the model returns. -/
-def tensor : Tensor ℚ := Tensor.sum [(4, 3)] ((fun σ ↦ eq (σ 4) (σ 1)) * observer)
-
-/-- The semantics gives the model of the naive listener the tensor `tensor`. -/
-theorem infer_model : infer dom model = some tensor := rfl
-
-/-- The entry of the tensor at an utterance and a referent is the value of the denotation there
-divided by its sum over the referents. -/
-theorem tensor_entry : ∀ (u : Fin 4) (r : Fin 3),
-    tensor.entry [u, r] = denotes u r / ∑ t ∈ Finset.range 3, denotes u t := by
-  decide +kernel
-
-/-- The entries of the tensor are those of the array that the paper prints for the naive
-listener: *green* and *round* leave two referents equally likely, and *pink* and *square* pick out
-one. -/
-theorem tensor_rows :
-    tensor.rows 4 3 =
+/-- The entries of the array are those that the paper prints for the naive listener: *green* and
+*round* leave two referents equally likely, and *pink* and *square* pick out one. -/
+theorem rows_eq :
+    rows =
       [[1/2, 1/2, 0],
        [0,   0,   1],
        [1,   0,   0],
        [0,   1/2, 1/2]] := by
   decide +kernel
 
-/-- The number of referents that the utterance `u` describes. -/
-def count (u : ℚ) : ℚ := ∑ t ∈ Finset.range 3, denotes u t
+/-- The entry of the array at an utterance and a referent is the value of the denotation there
+divided by the number of referents that the utterance describes. -/
+theorem rows_eq_denotes_div_count :
+    rows = (List.range 4).map fun u ↦ (List.range 3).map fun r ↦ denotes u r / count u := by
+  decide +kernel
 
 /-- The model in which the listener thinks that the speaker chooses the utterance first:
 ```
@@ -189,8 +158,7 @@ def utteranceFirst : Model Agent Name Dom ℚ where
 
 /-- The model in which the speaker chooses the utterance first returns the same array as the
 model in which the speaker chooses the referent first. -/
-theorem infer_utteranceFirst :
-    (infer dom utteranceFirst).map (·.rows 4 3) = (infer dom model).map (·.rows 4 3) := by
+theorem rows_utteranceFirst : Model.rows dom utteranceFirst = Model.rows dom model := by
   decide +kernel
 
 end Memo.NaiveListener

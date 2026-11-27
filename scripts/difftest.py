@@ -1,6 +1,6 @@
 """Check that memo and minimemo give the same arrays on the example models.
 
-    python scripts/difftest.py [module]
+    python scripts/difftest.py [module] [-v]
 """
 import dataclasses
 import itertools
@@ -98,7 +98,7 @@ def main() -> int:
         if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
-    lean = ["import Minimemo.Semantics", "import Mathlib.Algebra.Order.Field.Rat", "",
+    lean = ["import Minimemo.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
@@ -133,14 +133,14 @@ def main() -> int:
             ps = " ".join(map(ident, parsed[f.__name__][0].static_parameters))
             binder = f" ({ps} {args} : ℚ)" if ps else f" ({args} : ℚ)"
             m = f"({ident(f.__name__)} {ps})" if ps else ident(f.__name__)
+            axes = [s.domain for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
+            at = "0"
+            for i, d in enumerate(axes):
+                at = f"({at}) * {len(values[d])} + (dom .{d}).index a{i}"
             if ps:
                 lean += [f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
-                         f"  Model.ref dom {m} [{', '.join(args.split())}]", ""]
+                         f"  ((Model.entries dom {m}).getD []).getD ({at}) 0", ""]
             else:  # the array is computed once
-                axes = [s.domain for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
-                at = "0"
-                for i, d in enumerate(axes):
-                    at = f"({at}) * {len(values[d])} + (dom .{d}).index a{i}"
                 lean += [f"def {ident(f.__name__ + '_table')} : Array ℚ :=",
                          f"  ((Model.entries dom {m}).getD []).toArray",
                          f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
@@ -176,11 +176,10 @@ def main() -> int:
             print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}  (rejected)")
             continue
         want = numpy.broadcast_to(numpy.asarray(out), sizes).ravel()
-        if False:
-            ok = False
-        else:
-            got = [float(Fraction(*map(int, e.replace(" ", "").split("/")))) for e in entries.split(",")]
-            ok = len(got) == len(want) and all(abs(g - w) < 1e-5 for g, w in zip(got, want))
+        got = [float(Fraction(*map(int, e.replace(" ", "").split("/")))) for e in entries.split(",")]
+        # memo adds in single precision, and a model with many choices adds many numbers
+        ok = len(got) == len(want) and all(
+            abs(g - w) < 1e-4 * max(1, abs(w)) for g, w in zip(got, want))
         failed += not ok
         print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}")
         if not ok and "-v" in sys.argv:
