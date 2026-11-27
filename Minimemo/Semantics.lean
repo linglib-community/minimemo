@@ -111,12 +111,18 @@ def eval (e : Expr A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Value A N K
   -- E-EXPECTATION
   | .expect e => do
     let v ← eval e Φ n
+    if v.IsKnown Φ then some v else
     some ⟨Tensor.sum (Φ.choices.uncertainAxes dom) (v.tensor * Φ.ll), Φ.choices.knownAddrs⟩
   -- E-IMAGINE
   | .imagine s e => do
     let (Φ', n') ← run s Φ n
     let v ← eval e Φ' n'
-    if v.IsKnown Φ' then some v else none
+    let back (a : Address A N) : Option (Address A N) :=
+      if (Φ.choices.lookup a).isSome then some a
+      else (Φ'.conds a).bind fun b ↦ if b.1 = Φ'.name then some (.self, b.2) else none
+    if v.IsKnown Φ' ∧ ∀ a ∈ v.deps, (back a).isSome then
+      some ⟨v.tensor, v.deps.biUnion fun a ↦ (back a).toFinset⟩
+    else none
 termination_by structural e
 
 /-- The **effect** of a statement on a frame and on the next free axis `n`. -/
@@ -135,7 +141,7 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
     let Φα := (Φ.agents α).getD (.empty (.agent α))
     let Φα' : Frame A N D K := { Φα with choices := Φα.choices.insert (.self, x) ⟨X, n, true⟩ }
     let v ← eval e Φα' (n + 1)
-    if v.IsKnown Φα' then
+    if v.IsKnown Φα' ∧ (Φα.choices.lookup (.self, x)).isNone then
       some ({ Φ with
         choices := Φ.choices.insert (.agent α, x) ⟨X, n, false⟩
         agents := Function.update Φ.agents α (some Φα')
@@ -165,7 +171,7 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
     let Φα := (Φ.agents α).getD (.empty (.agent α))
     let Φα' : Frame A N D K := { Φα with choices := Φα.choices.insert (.self, x) ⟨X, n, true⟩ }
     let v ← eval e Φα' (n + 1)
-    if v.IsKnown Φα' then
+    if v.IsKnown Φα' ∧ (Φα.choices.lookup (.self, x)).isNone then
       let best : Tensor K := fun σ ↦
         if v.tensor σ = v.tensor.maxAxis n (dom X).size σ then 1 else 0
       some ({ Φ with
@@ -197,7 +203,7 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
         choices := xs.zipIdx.foldl (fun χ p ↦ χ.insert (.self, p.1.1) ⟨p.1.2, n + p.2, true⟩)
           Φα.choices }
     let v ← eval e Φα' (n + xs.length)
-    if v.IsKnown Φα' then
+    if v.IsKnown Φα' ∧ ∀ p ∈ xs, (Φα.choices.lookup (.self, p.1)).isNone then
       let axes := xs.zipIdx.map fun p ↦ (n + p.2, (dom p.1.2).size)
       some ({ Φ with
         choices := xs.zipIdx.foldl

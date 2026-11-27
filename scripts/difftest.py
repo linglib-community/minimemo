@@ -12,6 +12,7 @@ from fractions import Fraction
 
 import numpy
 from memo import memo
+from memo.core import MemoError
 from memo.core import (EChoice, EFFI, EMemo, EWith, SChoose, SForAll, SKnows, SShow, SSnapshot,
                        SWith)
 from memo.parse import parse_memo
@@ -151,12 +152,19 @@ def main() -> int:
     failed = 0
     for f, (entries, none) in zip(raw, results, strict=True):
         # memo compiles a model in the scope of its caller, which has to be the module of the model
-        exec(f"{f.__name__} = memo({f.__name__})", scope)
-        compiled = scope[f.__name__]
         sizes = [len(values[s.domain]) for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
-        out = compiled(*args_of.get(f.__name__, ()))
+        try:
+            exec(f"{f.__name__} = memo({f.__name__})", scope)
+            out = scope[f.__name__](*args_of.get(f.__name__, ()))
+        except MemoError:
+            out = None
+        if none or out is None:
+            ok = bool(none) and out is None
+            failed += not ok
+            print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}  (rejected)")
+            continue
         want = numpy.broadcast_to(numpy.asarray(out), sizes).ravel()
-        if none:
+        if False:
             ok = False
         else:
             got = [float(Fraction(*map(int, e.replace(" ", "").split("/")))) for e in entries.split(",")]

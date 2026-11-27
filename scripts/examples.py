@@ -167,10 +167,32 @@ def boolean_sum[u: U, r: R]():
     return Pr[speaker.u_said == u]
 
 
+def imagines[u: U, r: R]():
+    listener: knows(u)
+    listener: thinks[speaker: chooses(r_true in R, wpp=1)]
+    listener: chooses(r_pick in R, wpp=imagine[
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true)),
+        Pr[speaker.u_said == u, speaker.r_true == r_pick]
+    ])
+    return Pr[listener.r_pick == r]
+
+
+def known_expectation[u: U, r: R]():
+    speaker: knows(r)
+    speaker: chooses(u_said in U, wpp=denotes(u_said, r))
+    return E[speaker[E[r]] + (speaker.u_said == u)]
+
+
+def repeated[u: U, r: R]():
+    speaker: chooses(u_said in U, wpp=1)
+    speaker: chooses(u_said in U, wpp=1)
+    return Pr[speaker.u_said == u] + 0 * r
+
+
 # A model comes after the models that it refers to.
 MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
           weighted, tempered, observes_that, observes_event, variance, chooses_two, forgets,
-          maximize, snapshot, boolean_sum]
+          maximize, snapshot, boolean_sum, imagines, known_expectation, repeated]
 
 # Parameter values for the comparison with memo.
 ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}
