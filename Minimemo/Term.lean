@@ -131,7 +131,8 @@ def Program.size (p : Program D F) (i : ℕ) : ℕ := (p.doms[i]?.map fun d ↦ 
 
 variable [Semifield K] [LinearOrder K] (size : ℕ → ℕ)
 
-/-- The **table of a term**, when `W` holds the tables so far. -/
+/-- The **table of a term**, when `W` holds the tables so far. A link between two choices of
+different sizes is not followed. -/
 def Term.eval (W : Array (Table K)) : Term D F → Table K
   | .lit q => .const (I.lit q)
   | .op o ts =>
@@ -140,7 +141,7 @@ def Term.eval (W : Array (Table K)) : Term D F → Table K
   | .val i d => .ofFn size [i] fun σ ↦ (I.dom d).val (σ i)
   | .ref w => W.getD w (.const 1)
   | .sum over t => (t.eval W).sumOver size over
-  | .rename links t => (t.eval W).rename size links
+  | .rename links t => (t.eval W).rename size (links.filter fun l ↦ size l.1 == size l.2)
   | .best i t => (t.eval W).best size i
   | .letE t₁ t₂ => t₂.eval (W.push (t₁.eval W))
 

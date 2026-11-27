@@ -4,6 +4,7 @@ public import MinimemoTheory.Interp
 public import MinimemoTheory.Table.Get
 public import MinimemoTheory.Table.Map
 public import MinimemoTheory.Transfer
+public import MinimemoTheory.Denote
 public import MinimemoTheory.Factor
 public import MinimemoTheory.Belief.Basic
 public import MinimemoTheory.FiniteMeasure

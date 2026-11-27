@@ -71,7 +71,7 @@ theorem toFactor_ref (w : ℕ) :
 
 /-- A term read through no links has the table of the term. -/
 theorem eval_rename_nil (t : Term D F) : (Term.rename [] t).eval J size W = t.eval J size W := by
-  rw [Term.eval, Table.rename_nil]
+  rw [Term.eval, List.filter_nil, Table.rename_nil]
 
 /-- The table of an operator applied to terms has, at an assignment, the value of the operator at
 the numbers of their tables. -/
