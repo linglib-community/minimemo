@@ -14,3 +14,4 @@ public import Minimemo.Example.Knows
 public import Minimemo.Notation
 public import Minimemo.Example.Notation
 public import Minimemo.Core.Belief
+public import Minimemo.Core.OfTensor
