@@ -15,3 +15,4 @@ public import Minimemo.Notation
 public import Minimemo.Example.Notation
 public import Minimemo.Core.Belief
 public import Minimemo.Core.OfTensor
+public import Minimemo.Core.Table

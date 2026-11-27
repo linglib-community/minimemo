@@ -1,5 +1,6 @@
 name = "minimemo"
 defaultTargets = ["Minimemo"]
+testDriver = "MinimemoTest"
 
 [leanOptions]
 autoImplicit = false
@@ -12,3 +13,6 @@ rev = "fc4f59e577feb1a4956671bc04ac18aaaf8cd842"
 
 [[lean_lib]]
 name = "Minimemo"
+
+[[lean_lib]]
+name = "MinimemoTest"
