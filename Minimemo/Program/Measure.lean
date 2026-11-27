@@ -22,12 +22,13 @@ observed value.
 
 * `Memo.Step.measure_chooses`: the measure of the table of a `chooses` step.
 * `Memo.Step.measure_observes`: the measure of the table of an `observes` step.
+* `Memo.Term.lintegral_expect`: the table of an expectation term is an integral.
 -/
 
 @[expose] public section
 
 open MeasureTheory ProbabilityTheory
-open scoped NNReal
+open scoped NNReal ENNReal
 
 namespace Memo.Step
 
@@ -61,3 +62,20 @@ theorem measure_observes (i : ℕ) (I : List ℕ) (hI : I.Nodup) (hu : I.toFinse
     σ).trans (Belief.measure_observes (Table.toBelief size u (W.getD w (.const 1))) σ hi)
 
 end Memo.Step
+
+namespace Memo.Term
+
+variable {size : ℕ → ℕ}
+
+/-- The table of an expectation term is the integral of the factor of its term against the measure
+of the belief that it names. -/
+theorem lintegral_expect (W : Array (Table ℝ≥0)) (w : ℕ) (I : List ℕ) (hI : I.Nodup)
+    (t : Term ℝ≥0) (hw : (W.getD w (.const 1)).Sized size) (ht : (t.eval W).Sized size)
+    (σ : ∀ i, Fin (size i)) :
+    ∫⁻ τ, ((Table.toFactor size (t.eval W) (Function.updateFinset σ I.toFinset τ) : ℝ≥0) : ℝ≥0∞)
+        ∂(Table.toBelief size I.toFinset (W.getD w (.const 1))).measure σ =
+      (Table.toFactor size ((Term.expect w (I.map fun i ↦ (i, size i)) t).eval W) σ : ℝ≥0) := by
+  rw [Term.toFactor_expect W w I hI t hw ht]
+  exact Belief.lintegral_measure _ σ _
+
+end Memo.Term

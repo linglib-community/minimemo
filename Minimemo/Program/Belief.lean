@@ -27,6 +27,9 @@ the belief after that observation.
   the choice.
 * `Memo.Step.toBelief_observes`: the table of an `observes` step is the belief after the
   observation.
+* `Memo.Step.toBelief_choosesMany`, `Memo.Step.toBelief_weighs`, `Memo.Step.toBelief_forgets`:
+  the tables of the other steps.
+* `Memo.Term.toFactor_expect`: the table of an expectation term is the expectation in the belief.
 -/
 
 @[expose] public section
@@ -66,6 +69,44 @@ theorem toBelief_observes (i : ℕ) (I : List ℕ) (hI : I.Nodup) (hu : I.toFins
   simp only [Table.toBelief, Belief.observes, Step.table]
   rw [Table.toFactor_div hw (hw.sumOver _), Table.toFactor_sumOver I hI hw, hu]
 
+/-- The table of a `chooses` step of several choices is the belief after they are made
+together. -/
+theorem toBelief_choosesMany (I : List ℕ) (hI : I.Nodup) (t : Term K)
+    (hw : (W.getD w (.const 1)).Sized size) (ht : (t.eval W).Sized size) :
+    Table.toBelief size (u ∪ I.toFinset)
+        ((Step.chooses w (I.map fun i ↦ (i, size i)) t).table W) =
+      (Table.toBelief size u (W.getD w (.const 1))).choosesMany I.toFinset
+        (Table.toFactor size (t.eval W)) := by
+  simp only [Table.toBelief, Belief.choosesMany, Step.table]
+  rw [Table.toFactor_mul hw (ht.div (ht.sumOver _)), Table.toFactor_div ht (ht.sumOver _),
+    Table.toFactor_sumOver I hI ht]
+
+/-- The table of a `weighs` step is the belief with its factor multiplied by the weight. -/
+theorem toBelief_weighs (t : Term K) (hw : (W.getD w (.const 1)).Sized size)
+    (ht : (t.eval W).Sized size) :
+    Table.toBelief size u ((Step.weighs w t).table W) =
+      (Table.toBelief size u (W.getD w (.const 1))).weighs (Table.toFactor size (t.eval W)) := by
+  simp only [Table.toBelief, Belief.weighs, Step.table]
+  rw [Table.toFactor_mul hw ht]
+
+/-- The table of a `forgets` step is the belief after the choices are forgotten. -/
+theorem toBelief_forgets (I : List ℕ) (hI : I.Nodup) (hw : (W.getD w (.const 1)).Sized size) :
+    Table.toBelief size (u \ I.toFinset)
+        ((Step.forgets w (I.map fun i ↦ (i, size i))).table W) =
+      (Table.toBelief size u (W.getD w (.const 1))).forgets I.toFinset := by
+  simp only [Table.toBelief, Belief.forgets, Step.table]
+  rw [Table.toFactor_sumOver I hI hw]
+
 end Step
+
+/-- The table of an expectation term is the expectation of the factor of its term in the belief of
+the table that it names, if it sums over the uncertain choices of that belief. -/
+theorem Term.toFactor_expect (W : Array (Table K)) (w : ℕ) (I : List ℕ) (hI : I.Nodup)
+    (t : Term K) (hw : (W.getD w (.const 1)).Sized size) (ht : (t.eval W).Sized size) :
+    Table.toFactor size ((Term.expect w (I.map fun i ↦ (i, size i)) t).eval W) =
+      (Table.toBelief size I.toFinset (W.getD w (.const 1))).expect
+        (Table.toFactor size (t.eval W)) := by
+  simp only [Term.eval, Belief.expect]
+  rw [Table.toFactor_sumOver I hI (ht.mul hw), Table.toFactor_mul ht hw]
 
 end Memo

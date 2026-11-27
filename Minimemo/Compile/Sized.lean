@@ -29,6 +29,8 @@ and leaves a well formed scope.
 * `Memo.Expr.sized_term`, `Memo.Stmt.sized_steps`: the translation writes sized terms and steps.
 * `Memo.Model.sized_program`: the program of a model is sized, with the sizes of the model.
 * `Memo.Model.sized_tables`: every table that the program of a model computes is sized.
+* `Memo.Scope.WF.uncertain_eq`: the choices that a well formed scope sums over are its uncertain
+  choices with their sizes, each once.
 -/
 
 @[expose] public section
@@ -492,5 +494,34 @@ theorem Model.sized_tables [Semifield K] [LinearOrder K] (M : Model A N D K) {p 
     (h : Model.program dom M = some p) :
     ∀ x ∈ p.steps.foldl Step.run #[.const 1], x.Sized (Model.size dom M) :=
   Program.sized_tables (Model.sized_program M h)
+
+/-- The numbers of the choices that the mind is uncertain of. -/
+def Scope.uncertainIndices (S : Scope A N D) : List ℕ :=
+  (S.entries.filterMap fun e ↦ if e.2.certain then none else some e.2.index).dedup
+
+omit [DecidableEq A] [DecidableEq N] [DecidableEq D] in
+theorem Scope.nodup_uncertainIndices (S : Scope A N D) : S.uncertainIndices.Nodup :=
+  List.nodup_dedup _
+
+omit [DecidableEq A] [DecidableEq N] [DecidableEq D] in
+theorem filterMap_uncertain : ∀ (l : List ((Ref A × N) × Entry D)),
+    (∀ p ∈ l, size p.2.index = (dom p.2.dom).size) →
+    (l.filterMap fun e ↦ if e.2.certain then none else some (e.2.index, (dom e.2.dom).size)) =
+      (l.filterMap fun e ↦ if e.2.certain then none else some e.2.index).map
+        fun i ↦ (i, size i)
+  | [], _ => rfl
+  | p :: l, h => by
+    have ih := filterMap_uncertain l fun q hq ↦ h q (List.mem_cons_of_mem _ hq)
+    by_cases hc : p.2.certain
+    · simpa [List.filterMap_cons, hc] using ih
+    · simp [hc, ih, h p List.mem_cons_self]
+
+omit [DecidableEq A] [DecidableEq N] [DecidableEq D] in
+/-- The choices that a well formed scope sums over are its uncertain choices with their sizes. -/
+theorem Scope.WF.uncertain_eq (h : Scope.WF dom size S) :
+    S.uncertain dom = S.uncertainIndices.map fun i ↦ (i, size i) := by
+  have hinj : Function.Injective fun i : ℕ ↦ (i, size i) := fun a b hab ↦ (Prod.mk.inj hab).1
+  rw [Scope.uncertain, Scope.uncertainIndices, filterMap_uncertain _ h.entries',
+    List.dedup_map_of_injective hinj]
 
 end Memo

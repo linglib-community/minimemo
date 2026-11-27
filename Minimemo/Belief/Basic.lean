@@ -35,6 +35,8 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 * `Memo.Belief.choice i w`: the belief in which only the choice `i` is uncertain, with weight
   `w`.
 * `Memo.Belief.observes b i`: the belief after the choice `i` is observed.
+* `Memo.Belief.choosesMany b s w`, `Memo.Belief.weighs b e`, `Memo.Belief.forgets b s`: the belief
+  after several choices made together, after an event, and after choices are forgotten.
 * `Memo.Belief.expect b e`: the expectation of the factor `e`.
 * `Memo.Belief.IsNormalized b`: at every assignment, the factor of `b` sums to one or to zero
   over the uncertain choices.
@@ -126,6 +128,27 @@ divided by its sum over the choices that remain uncertain. -/
 def observes (b : Belief X K) (i : ι) : Belief X K where
   uncertain := b.uncertain.erase i
   weight := b.weight / b.weight.sumOver (b.uncertain.erase i)
+
+/-- The belief after the choices in `s` are made together with weight `w`: they become uncertain,
+and the factor is multiplied by `w` divided by its sum over them. -/
+def choosesMany (b : Belief X K) (s : Finset ι) (w : Factor X K) : Belief X K where
+  uncertain := b.uncertain ∪ s
+  weight := b.weight * (w / w.sumOver s)
+
+/-- The belief with its factor multiplied by `e`: an event of weight `e` has happened, and the
+belief is not yet divided by its sum. -/
+def weighs (b : Belief X K) (e : Factor X K) : Belief X K where
+  uncertain := b.uncertain
+  weight := b.weight * e
+
+/-- The belief after the choices in `s` are forgotten: they are no longer uncertain, and the
+factor is summed over them. -/
+def forgets (b : Belief X K) (s : Finset ι) : Belief X K where
+  uncertain := b.uncertain \ s
+  weight := b.weight.sumOver s
+
+theorem chooses_eq_choosesMany (b : Belief X K) (i : ι) (w : Factor X K) :
+    b.chooses i w = b.choosesMany {i} w := rfl
 
 /-- The **expectation** of a factor in a belief is the sum, over the uncertain choices, of the
 factor times the factor of the belief. -/

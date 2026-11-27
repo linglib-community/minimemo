@@ -29,6 +29,7 @@ variables gives the sum of its factor over those choices.
 
 * `Memo.Table.toFactor_mul`, `Memo.Table.toFactor_div`: the factor of a product or a quotient.
 * `Memo.Table.toFactor_sumOver`: the factor of a sum over a list of variables.
+* `Memo.Table.get_rename`: a renamed table is read through its links.
 -/
 
 @[expose] public section
@@ -129,6 +130,32 @@ theorem get_map₂ (g : K → K → K) (hs : s.Sized size) (ht : t.Sized size)
       t.get_congr fun w hw ↦ h' w (List.mem_append_right _ hw)]
 
 end Map₂
+
+section Rename
+
+variable [Zero K] {t : Table K} {σ : ℕ → ℕ}
+
+/-- A renamed table has, at an assignment in range, the number of the table at the assignment read
+through the links, if the table is sized and each link joins two variables of the same size. -/
+theorem get_rename {links : List (ℕ × ℕ)} (ht : t.Sized size)
+    (hl : ∀ i, size ((links.lookup i).getD i) = size i) (hσ : ∀ i, σ i < size i) :
+    (t.rename links).get σ = t.get fun i ↦ σ ((links.lookup i).getD i) := by
+  unfold Table.rename
+  dsimp only
+  split_ifs with h
+  · refine t.get_congr fun v hv ↦ ?_
+    have := List.all_eq_true.1 h v hv
+    rw [beq_iff_eq] at this
+    rw [this]
+  · refine get_ofFn _ _ (fun v hv ↦ ?_) fun σ₁ σ₂ hagree ↦ ?_
+    · obtain ⟨v₀, hv₀, rfl⟩ := List.mem_map.1 (mem_distinct hv)
+      rw [ht v₀ hv₀, ← hl v₀.1]
+      exact hσ _
+    · refine t.get_congr fun v hv ↦ ?_
+      exact agree_of_distinct hagree _ (List.mem_map_of_mem (f := fun v ↦
+        ((links.lookup v.1).getD v.1, v.2)) hv)
+
+end Rename
 
 section Sum
 
