@@ -142,6 +142,11 @@ variable. -/
 def toFactor (size : ℕ → ℕ) (t : Table K) : Factor (fun i ↦ Fin (size i)) K :=
   fun σ ↦ t.get size fun i ↦ σ i
 
+/-- The factor of the table of a number is that number. -/
+@[simp] theorem toFactor_const (k : K) (σ : ∀ i, Fin (size i)) :
+    toFactor size (const k) σ = k := by
+  simp [toFactor, get, const, index]
+
 /-- The factor of the table that combines tables with `f` is `f` at their factors. -/
 theorem toFactor_op {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K)
     (σ : ∀ i, Fin (size i)) :

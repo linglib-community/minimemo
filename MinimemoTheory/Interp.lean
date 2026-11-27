@@ -41,6 +41,11 @@ structure Interp.Arith [Semifield K] (J : Interp D F K) : Prop where
   mul : ∀ x : Fin 2 → K, J.op (.inl .mul) x = x 0 * x 1
   div : ∀ x : Fin 2 → K, J.op (.inl .div) x = x 0 / x 1
 
+/-- The interpretation in an ordered field gives the product and the quotient their meaning. -/
+theorem Interp.arith_ofField [Field K] [LinearOrder K] (dom : D → Domain K)
+    (call : {k : ℕ} → F k → (Fin k → K) → K) : (Interp.ofField dom call).Arith :=
+  ⟨fun _ ↦ rfl, fun _ ↦ rfl⟩
+
 /-- Two interpretations are **compatible** along `φ` if their domains have the same sizes, and the
 values, the operators and the literals of the second are the images of those of the first. -/
 structure Interp.Compat (φ : K → L) (I : Interp D F K) (J : Interp D F L) : Prop where
