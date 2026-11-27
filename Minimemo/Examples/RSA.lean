@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Example.Listener
-public import MinimemoTheory.Kernel
+public import Minimemo.Examples.Listener
+public import Minimemo.Theory.Kernel
 public import Mathlib.Analysis.SpecialFunctions.Exp
 public import Mathlib.Topology.Order.MonotoneConvergence
 public import Mathlib.Topology.Algebra.Order.Field

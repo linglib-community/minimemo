@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Example.NaiveListener
-public import MinimemoTheory.Denote
+public import Minimemo.Examples.NaiveListener
+public import Minimemo.Theory.Denote
 public import Mathlib.Algebra.Order.Field.Basic
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.NormNum

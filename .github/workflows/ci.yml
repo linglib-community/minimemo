@@ -12,7 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: leanprover/lean-action@v1
       - name: the implementation does not import the theory
-        run: "! grep -rn 'import MinimemoTheory' Minimemo Minimemo.lean"
+        run: |
+          ! ls Minimemo.lean Minimemo/*.lean | grep -v 'Minimemo/\(Theory\|Examples\|Test\)\.lean' \
+            | xargs grep -n 'import Minimemo\.\(Theory\|Examples\|Test\)'
+      - name: the theory does not import the examples
+        run: "! grep -rn 'import Minimemo\\.\\(Examples\\|Test\\)' Minimemo/Theory Minimemo/Theory.lean"
       - name: run the tests
         run: lake test
       - uses: actions/setup-python@v5

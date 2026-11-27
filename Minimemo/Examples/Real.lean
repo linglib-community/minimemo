@@ -5,12 +5,12 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Kernel
-public import MinimemoTheory.Example.NaiveListener
-public import MinimemoTheory.Example.PragmaticListener
-public import MinimemoTheory.Example.Knows
-public import MinimemoTheory.Example.Notation
-public import MinimemoTheory.Transfer
+public import Minimemo.Theory.Kernel
+public import Minimemo.Examples.NaiveListener
+public import Minimemo.Examples.PragmaticListener
+public import Minimemo.Examples.Knows
+public import Minimemo.Examples.Notation
+public import Minimemo.Theory.Transfer
 public import Mathlib.Basic.Real.Basic
 public import Mathlib.Data.Rat.Cast.Order
 public import Mathlib.Tactic.NormNum

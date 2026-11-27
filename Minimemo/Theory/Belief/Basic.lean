@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Factor
+public import Minimemo.Theory.Factor
 
 /-!
 # Beliefs over a family of choices

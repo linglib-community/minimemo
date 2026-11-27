@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import MinimemoTheory.Example.NaiveListener
+public import Minimemo.Examples.NaiveListener
 
 /-!
 # Models with `knows`

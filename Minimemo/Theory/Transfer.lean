@@ -7,8 +7,8 @@ module
 
 public import Minimemo.Term
 public import Minimemo.Model
-public import MinimemoTheory.Interp
-public import MinimemoTheory.Table.Map
+public import Minimemo.Theory.Interp
+public import Minimemo.Theory.Table.Map
 
 /-!
 # A program in two fields of numbers

@@ -6,9 +6,9 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Term
-public import MinimemoTheory.Interp
-public import MinimemoTheory.Bridge.Table
-public import MinimemoTheory.Belief.Basic
+public import Minimemo.Theory.Interp
+public import Minimemo.Theory.Bridge.Table
+public import Minimemo.Theory.Belief.Basic
 
 /-!
 # Terms as operations on beliefs
