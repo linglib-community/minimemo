@@ -7,7 +7,6 @@ module
 
 public import Minimemo.Core.Program
 public import Minimemo.Syntax
-public import Minimemo.Tensor
 
 /-!
 # From a model to a program
@@ -34,6 +33,7 @@ through these links.
   `g`.
 * `Memo.Core.Model.program dom M`: the program of the model `M`, if memo accepts the model.
 * `Memo.Core.Model.entries dom M`: the entries of the array of `M`, in row-major order.
+* `Memo.Core.Model.rows dom M`: the same entries, as rows along the last axis.
 -/
 
 @[expose] public section
@@ -253,5 +253,9 @@ def Model.program (M : Model A N D K) : Option (Program K) := do
 /-- The entries of the array of a model, in row-major order. -/
 def Model.entries [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List K) :=
   (Model.program dom M).map Program.entries
+
+/-- The rows of the array of a model, along its last axis. -/
+def Model.rows [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List (List K)) :=
+  (Model.program dom M).map Program.rows
 
 end Memo.Core

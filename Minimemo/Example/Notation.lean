@@ -19,7 +19,7 @@ This file writes the naive listener in Lean in the syntax of memo, and computes 
 
 ## Main results
 
-* `Memo.NotationExample.infer_naive`: the array that the model returns.
+* `Memo.NotationExample.rows_naive`: the array that the model returns.
 -/
 
 @[expose] public section
@@ -43,8 +43,8 @@ def naive : Model Agent Name Dom ℚ := memo% [u : U, r : R]
   listener: chooses(r_pick in R, wpp=Pr[speaker.r_true == r_pick])
   return Pr[listener.r_pick == r]
 
-theorem infer_naive :
-    (infer dom naive).map (·.rows 4 3) =
+theorem rows_naive :
+    Core.Model.rows dom naive =
       some [[1/2, 1/2, 0],
             [0,   0,   1],
             [1,   0,   0],

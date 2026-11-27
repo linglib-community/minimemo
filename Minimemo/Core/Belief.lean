@@ -42,6 +42,7 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 * `Memo.Core.Factor.sumOver_union`: the sum over a union of two disjoint sets of choices is the
   sum over one of the sum over the other.
 * `Memo.Core.Belief.observes_isNormalized`: the belief after an observation is normalized.
+* `Memo.Core.Belief.chooses_mul_left`: a weight matters only up to a nonzero factor.
 * `Memo.Core.Belief.IsNormalized.chooses`: the belief after a choice is normalized, if the belief
   before it is, its factor does not depend on the new choice, and the weight has a nonzero sum
   over that choice.
@@ -114,6 +115,15 @@ def observes (b : Belief X K) (i : ι) : Belief X K where
 /-- The **expectation** of a factor in a belief is the sum, over the uncertain choices, of the
 factor times the factor of the belief. -/
 def expect (b : Belief X K) (e : Factor X K) : Factor X K := (e * b.weight).sumOver b.uncertain
+
+/-- A weight matters only up to a nonzero factor: the choice with weight `c * w` gives the same
+belief as the choice with weight `w`. -/
+theorem chooses_mul_left {c : K} (hc : c ≠ 0) (b : Belief X K) (i : ι) (w : Factor X K) :
+    b.chooses i (fun σ ↦ c * w σ) = b.chooses i w := by
+  unfold chooses
+  congr 2
+  funext σ
+  simp only [Pi.div_apply, Factor.sumOver, ← Finset.mul_sum, mul_div_mul_left _ _ hc]
 
 /-- The belief after an observation is normalized. -/
 theorem observes_isNormalized (b : Belief X K) (i : ι) : (b.observes i).IsNormalized := by

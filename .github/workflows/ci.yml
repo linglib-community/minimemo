@@ -21,7 +21,7 @@ jobs:
         run: |
           for seed in 1 2 3 4; do
             python scripts/fuzz.py $seed 25
-            python scripts/difftest.py fuzz_models -v --core
+            python scripts/difftest.py fuzz_models -v
           done
       - name: report on memo's demos
         run: |

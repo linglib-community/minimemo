@@ -24,6 +24,7 @@ term `.thinks listener (.chooses speaker r R (.lit 1))`.
 
 ## Main definitions
 
+* `Memo.Domain K`: a finite sequence of numbers, the values that a choice can take.
 * `Memo.Ref A`: the current agent `self`, or an agent with a name in `A`.
 * `Memo.Expr A N D K`: the expressions, over names `A` of agents, `N` of choices and `D` of
   domains, with numbers in `K`.
@@ -53,6 +54,17 @@ can be evaluated.
 universe u v w x
 
 namespace Memo
+
+/-- A **domain** is a finite sequence of numbers, the values that a choice can take. -/
+structure Domain (K : Type*) where
+  /-- The number of values. -/
+  size : ℕ
+  /-- The value at each position. -/
+  val : ℕ → K
+
+/-- The first position at which a domain has the value `v`, or zero if it has none. -/
+def Domain.index {K : Type*} [DecidableEq K] (X : Domain K) (v : K) : ℕ :=
+  ((List.range X.size).find? fun j ↦ X.val j = v).getD 0
 
 /-- A **reference to an agent** is the current agent, `self`, or an agent with a name. -/
 inductive Ref (A : Type u) : Type u

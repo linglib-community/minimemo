@@ -1,9 +1,6 @@
 """Check that memo and minimemo give the same arrays on the example models.
 
-    python scripts/difftest.py [module] [-v] [--core]
-
-Both implementations in Lean are compared with memo and with each other. With `--core`, only the
-programs on tables are run.
+    python scripts/difftest.py [module] [-v]
 """
 import dataclasses
 import itertools
@@ -101,8 +98,7 @@ def main() -> int:
         if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
-    lean = ["import Minimemo.Semantics", "import Minimemo.Core.Compile",
-            "import Mathlib.Algebra.Order.Field.Rat", "",
+    lean = ["import Minimemo.Core.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",
@@ -153,12 +149,6 @@ def main() -> int:
     for f in raw:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
         m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
-        if "--core" not in sys.argv:
-            lean.append(f"#eval Model.entries dom {m}")
-    lean.append('#eval "core"')
-    for f in raw:
-        given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
-        m = f"({ident(f.__name__)}{given})" if given else ident(f.__name__)
         lean.append(f"#eval Core.Model.entries dom {m}")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(lean) + "\n")
@@ -167,55 +157,36 @@ def main() -> int:
     if run.returncode != 0:
         print(run.stdout + run.stderr)
         return 1
-    first, _, second = run.stdout.partition('"core"')
-    pattern = r"some\s*\[(.*?)\]|(none)"
-    core = re.findall(pattern, second, re.S)
-    both = "--core" not in sys.argv
-    semantics = re.findall(pattern, first, re.S) if both else [None] * len(raw)
-
-    def agrees(result, want):
-        """Whether a result in Lean, entries or a rejection, is what memo gives."""
-        entries, none = result
-        if none or want is None:
-            return bool(none) and want is None
-        got = [float(Fraction(*map(int, e.replace(" ", "").split("/")))) for e in entries.split(",")]
-        # memo adds in single precision, and a model with many choices adds many numbers
-        return len(got) == len(want) and all(
-            abs(g - w) < 1e-4 * max(1, abs(w)) for g, w in zip(got, want))
+    results = re.findall(r"some\s*\[(.*?)\]|(none)", run.stdout, re.S)
 
     scope = vars(examples)
     scope["memo"] = memo
-    failed = {"semantics": 0, "core": 0, "each other": 0}
-    for f, sem, cor in zip(raw, semantics, core, strict=True):
+    failed = 0
+    for f, (entries, none) in zip(raw, results, strict=True):
         # memo compiles a model in the scope of its caller, which has to be the module of the model
         sizes = [len(values[s.domain]) for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
         try:
             exec(f"{f.__name__} = memo({f.__name__})", scope)
             out = scope[f.__name__](*args_of.get(f.__name__, ()))
-            want = numpy.broadcast_to(numpy.asarray(out), sizes).ravel()
         except MemoError:
-            want = None
-        wrong = [] if agrees(cor, want) else ["core"]
-        if both and not agrees(sem, want):
-            wrong.append("semantics")
-        if both and (sem[0].split(), sem[1]) != (cor[0].split(), cor[1]):
-            wrong.append("each other")
-        for w in wrong:
-            failed[w] += 1
-        note = "  (rejected)" if want is None else ""
-        print(f"{'FAIL' if wrong else 'ok  '} {f.__name__}{note}{'  ' + ', '.join(wrong) if wrong else ''}")
-        if wrong and "-v" in sys.argv:
-            print("   memo:     ", None if want is None else [round(float(w), 5) for w in want])
-            if both:
-                print("   semantics:", sem[0] or "none")
-            print("   core:     ", cor[0] or "none")
-    n = len(raw)
-    if both:
-        print(f"{n - failed['semantics']} of {n} models agree with memo in the semantics")
-    print(f"{n - failed['core']} of {n} models agree with memo as programs on tables")
-    if both:
-        print(f"{n - failed['each other']} of {n} models agree in the two")
-    return 1 if any(failed.values()) else 0
+            out = None
+        if none or out is None:
+            ok = bool(none) and out is None
+            failed += not ok
+            print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}  (rejected)")
+            continue
+        want = numpy.broadcast_to(numpy.asarray(out), sizes).ravel()
+        got = [float(Fraction(*map(int, e.replace(" ", "").split("/")))) for e in entries.split(",")]
+        # memo adds in single precision, and a model with many choices adds many numbers
+        ok = len(got) == len(want) and all(
+            abs(g - w) < 1e-4 * max(1, abs(w)) for g, w in zip(got, want))
+        failed += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}")
+        if not ok and "-v" in sys.argv:
+            print("   memo:", [round(float(w), 5) for w in want])
+            print("   lean:", [round(g, 5) for g in got])
+    print(f"{len(raw) - failed} of {len(raw)} models agree")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

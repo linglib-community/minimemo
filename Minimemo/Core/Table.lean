@@ -74,9 +74,17 @@ def ofFn (vars : List (ℕ × ℕ)) (f : (ℕ → ℕ) → K) : Table K :=
 /-- The table with no variables and the number `k`. -/
 def const (k : K) : Table K := ⟨[], #[k]⟩
 
+/-- A list of variables in increasing order with one more variable, unless the list has it. -/
+def insertVar (v : ℕ × ℕ) : List (ℕ × ℕ) → List (ℕ × ℕ)
+  | [] => [v]
+  | w :: ws =>
+    if v.1 < w.1 then v :: w :: ws else if v.1 = w.1 then w :: ws else w :: insertVar v ws
+
+/-- The variables of a list, each once, in increasing order. -/
+def distinct (xs : List (ℕ × ℕ)) : List (ℕ × ℕ) := xs.foldr insertVar []
+
 /-- The variables of either of two lists, in increasing order. -/
-def union (xs ys : List (ℕ × ℕ)) : List (ℕ × ℕ) :=
-  (xs ++ ys.filter fun y ↦ !xs.any (·.1 == y.1)).mergeSort fun a b ↦ a.1 ≤ b.1
+def union (xs ys : List (ℕ × ℕ)) : List (ℕ × ℕ) := distinct (xs ++ ys)
 
 /-- The table that combines the numbers of two tables with `f`. -/
 def map₂ [Zero K] (f : K → K → K) (s t : Table K) : Table K :=
@@ -108,11 +116,6 @@ which has `size` positions, and zero elsewhere. -/
 def best [Zero K] [One K] [LinearOrder K] (i size : ℕ) (t : Table K) : Table K :=
   ofFn t.vars fun σ ↦
     if (List.range size).all fun j ↦ t.get (Function.update σ i j) ≤ t.get σ then 1 else 0
-
-/-- The variables of a list, each once, in increasing order. -/
-def distinct (xs : List (ℕ × ℕ)) : List (ℕ × ℕ) :=
-  (xs.foldl (fun seen v ↦ if seen.any (·.1 == v.1) then seen else seen ++ [v]) []).mergeSort
-    fun a b ↦ a.1 ≤ b.1
 
 /-- The table with each variable replaced by the variable that `links` gives it. Two variables
 with the same replacement become one, and the table is read where they agree. -/

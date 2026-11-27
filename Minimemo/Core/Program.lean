@@ -33,6 +33,7 @@ table `1`, a third along the choice `1`, and the term
 * `Memo.Core.Term.eval W t`: the table of the term `t`, when `W` holds the tables so far.
 * `Memo.Core.Step.run W s`: the tables after the step `s`.
 * `Memo.Core.Program.entries p`: the entries of the array of the program `p`, in row-major order.
+* `Memo.Core.Program.rows p`: the same entries, as rows along the last axis.
 -/
 
 @[expose] public section
@@ -125,5 +126,15 @@ def Program.table (p : Program K) : Table K := p.ret.eval (p.steps.foldl Step.ru
 def Program.entries (p : Program K) : List K :=
   let t := p.table
   (Table.ofFn p.axes fun σ ↦ t.get σ).data.toList
+
+/-- The rows of the array of a program: one list along the last axis for each choice of a position
+on the other axes, in row-major order. -/
+def Program.rows (p : Program K) : List (List K) :=
+  let t := p.table
+  match p.axes.getLast? with
+  | none => [[t.get fun _ ↦ 0]]
+  | some last =>
+    (Table.positions (p.axes.dropLast.map (·.2))).map fun js ↦
+      (List.range last.2).map fun j ↦ t.get (Table.assign p.axes (js ++ [j]))
 
 end Memo.Core

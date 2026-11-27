@@ -10,8 +10,8 @@ public import Minimemo.Example.NaiveListener
 /-!
 # Models with `knows`
 
-This file writes three models that use the statement `knows` as memo programs, and computes the
-arrays that the semantics gives them.
+This file writes three models that use the statement `knows` as memo programs, and computes
+their arrays.
 
 In the first model the speaker knows the referent and chooses an utterance that describes it. In
 the second a listener knows the referent and thinks that the speaker knows it too. In the third
@@ -23,14 +23,14 @@ the speaker chooses the referent, and the listener knows that choice without obs
 
 ## Main results
 
-* `Memo.Knows.infer_speakerKnows`, `Memo.Knows.infer_nestedKnows`,
-  `Memo.Knows.infer_knowsOther`: the arrays that the models return.
+* `Memo.Knows.rows_speakerKnows`, `Memo.Knows.rows_nestedKnows`, `Memo.Knows.rows_knowsOther`:
+  the arrays that the models return.
 
 ## Implementation notes
 
 The terms are printed from the memo source in `scripts/examples.py`. The arrays are those that
-memo 1.3.3 returns for that source. The array of the third model does not depend on the referent,
-and memo returns it with one column.
+memo 1.3.3 returns for that source. The array of the third model does not depend on the
+referent.
 -/
 
 @[expose] public section
@@ -78,24 +78,28 @@ def knowsOther : Model Agent Name Dom ℚ where
       (.expect (.op₂ eq (.query .speaker (.choice .uSaid)) (.choice .uGuess)))
   ret := .expect (.op₂ eq (.query .listener (.choice .uGuess)) (.choice .u))
 
-theorem infer_speakerKnows :
-    (infer dom speakerKnows).map (·.rows 4 3) =
+theorem rows_speakerKnows :
+    Core.Model.rows dom speakerKnows =
       some [[1/2, 1/2, 0],
             [0,   0,   1/2],
             [1/2, 0,   0],
             [0,   1/2, 1/2]] := by
   decide +kernel
 
-theorem infer_nestedKnows :
-    (infer dom nestedKnows).map (·.rows 4 3) =
+theorem rows_nestedKnows :
+    Core.Model.rows dom nestedKnows =
       some [[1/2, 1/2, 0],
             [0,   0,   1/2],
             [1/2, 0,   0],
             [0,   1/2, 1/2]] := by
   decide +kernel
 
-theorem infer_knowsOther :
-    (infer dom knowsOther).map (·.rows 4 1) = some [[1/3], [1/6], [1/6], [1/3]] := by
+theorem rows_knowsOther :
+    Core.Model.rows dom knowsOther =
+      some [[1/3, 1/3, 1/3],
+            [1/6, 1/6, 1/6],
+            [1/6, 1/6, 1/6],
+            [1/3, 1/3, 1/3]] := by
   decide +kernel
 
 end Memo.Knows
