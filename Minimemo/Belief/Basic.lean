@@ -5,11 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Mathlib.Algebra.BigOperators.Field
-public import Mathlib.Data.Finset.Update
-public import Mathlib.Data.Fintype.BigOperators
-public import Mathlib.Data.Fintype.Pi
-public import Mathlib.Data.Fintype.Prod
+public import Minimemo.Factor
 
 /-!
 # Beliefs over a family of choices
@@ -28,8 +24,6 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 
 ## Main definitions
 
-* `Memo.Factor X K`: the type `(∀ i, X i) → K` of factors.
-* `Memo.Factor.sumOver s f`: the sum of `f` over the values of the choices in `s`.
 * `Memo.Belief X K`: a set of uncertain choices with a factor.
 * `Memo.Belief.chooses b i w`: the belief after the choice `i` with weight `w`.
 * `Memo.Belief.choice i w`: the belief in which only the choice `i` is uncertain, with weight
@@ -43,8 +37,6 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 
 ## Main results
 
-* `Memo.Factor.sumOver_union`: the sum over a union of two disjoint sets of choices is the
-  sum over one of the sum over the other.
 * `Memo.Belief.observes_isNormalized`: the belief after an observation is normalized.
 * `Memo.Belief.chooses_mul_left`: a weight matters only up to a nonzero factor.
 * `Memo.Belief.IsNormalized.chooses`: the belief after a choice is normalized, if the belief
@@ -56,44 +48,7 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 
 namespace Memo
 
-variable {ι : Type*} [DecidableEq ι] (X : ι → Type*) (K : Type*)
-
-/-- A **factor** is a number that depends on the assignment of a value to every choice. -/
-abbrev Factor := (∀ i, X i) → K
-
-variable {X K} [∀ i, Fintype (X i)] [Semifield K]
-
-/-- The **sum of a factor over a set of choices** adds its values at the assignments that agree
-with the given one off that set. -/
-def Factor.sumOver (s : Finset ι) (f : Factor X K) : Factor X K :=
-  fun σ ↦ ∑ τ : ∀ i : s, X i, f (Function.updateFinset σ s τ)
-
-omit [∀ i, Fintype (X i)] in
-theorem Function.updateFinset_updateFinset_self (σ : ∀ i, X i) (s : Finset ι)
-    (τ τ' : ∀ i : s, X i) :
-    Function.updateFinset (Function.updateFinset σ s τ) s τ' = Function.updateFinset σ s τ' := by
-  funext j
-  by_cases h : j ∈ s <;> simp [Function.updateFinset, h]
-
-/-- The sum of a factor over a set of choices does not depend on the values of those choices. -/
-theorem Factor.sumOver_updateFinset (s : Finset ι) (f : Factor X K) (σ : ∀ i, X i)
-    (τ : ∀ i : s, X i) : f.sumOver s (Function.updateFinset σ s τ) = f.sumOver s σ := by
-  simp only [Factor.sumOver, Function.updateFinset_updateFinset_self]
-
-/-- The sum over no choices is the factor. -/
-@[simp] theorem Factor.sumOver_empty (f : Factor X K) : f.sumOver ∅ = f := by
-  funext σ
-  have : Unique (∀ i : (∅ : Finset ι), X i) := Pi.uniqueOfIsEmpty _
-  rw [Factor.sumOver, Fintype.sum_unique]
-  congr 1
-
-/-- The sum over a union of two disjoint sets of choices is the sum over one of the sum over the
-other. -/
-theorem Factor.sumOver_union {s t : Finset ι} (hst : Disjoint s t) (f : Factor X K) :
-    f.sumOver (s ∪ t) = (f.sumOver t).sumOver s := by
-  funext σ
-  simp only [Factor.sumOver, Function.updateFinset_updateFinset hst]
-  rw [← (Equiv.piFinsetUnion X hst).sum_comp, Fintype.sum_prod_type]
+variable {ι : Type*} [DecidableEq ι] {X : ι → Type*} {K : Type*} [∀ i, Fintype (X i)] [Semifield K]
 
 variable (X K) in
 /-- A **belief** is a set of choices that an agent is uncertain of, with a factor: the probability

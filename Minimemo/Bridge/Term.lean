@@ -5,8 +5,9 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Program.Basic
-public import Minimemo.Table.Factor
+public import Minimemo.Term.Basic
+public import Minimemo.Bridge.Table
+public import Minimemo.Belief.Basic
 
 /-!
 # Terms as operations on beliefs
@@ -22,7 +23,6 @@ when the interpretation gives the product and the quotient their meaning, `Memo.
 ## Main definitions
 
 * `Memo.Table.toBelief size u t`: the belief with uncertain choices `u` and the factor of `t`.
-* `Memo.Interp.Arith J`: the interpretation `J` gives the product and the quotient their meaning.
 
 ## Main results
 
@@ -46,11 +46,6 @@ variable {D : Type u} {F : ℕ → Type u} {K : Type u} [Semifield K] [LinearOrd
 abbrev Table.toBelief (size : ℕ → ℕ) (u : Finset ℕ) (t : Table K) :
     Belief (fun i ↦ Fin (size i)) K :=
   ⟨u, Table.toFactor size t⟩
-
-/-- An interpretation gives the product and the quotient their meaning. -/
-structure Interp.Arith (J : Interp D F K) : Prop where
-  mul : ∀ x : Fin 2 → K, J.op (.inl .mul) x = x 0 * x 1
-  div : ∀ x : Fin 2 → K, J.op (.inl .div) x = x 0 / x 1
 
 namespace Term
 

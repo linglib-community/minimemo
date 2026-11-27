@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Table.Factor
+public import Minimemo.Table.Basic
 public import Mathlib.Algebra.Order.Field.Basic
 public import Mathlib.Algebra.Order.Monoid.Unbundled.Basic
 

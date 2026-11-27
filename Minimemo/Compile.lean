@@ -5,8 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Program.Map
-public import Minimemo.Syntax.Basic
+public import Minimemo.Term.Basic
 
 /-!
 # From a model to a program
@@ -33,8 +32,6 @@ through these links.
 * `Memo.Stmt.steps s S g`: the scope after the statement `s`, with its steps added to
   `g`.
 * `Memo.Model.program M`: the program of the model `M`, if memo accepts the model.
-* `Memo.Model.entries I M`: the entries of the array of `M`, in row-major order.
-* `Memo.Model.rows I M`: the same entries, as rows along the last axis.
 -/
 
 @[expose] public section
@@ -185,7 +182,7 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) : Option (Term 
     let (S', g') ← Stmt.steps s S g
     let (t, deps) ← Expr.term e S' g'
     if deps.all fun i ↦ i ∈ S'.certain ∧ S.entries.any (·.2.index == i) then
-      some ((g'.steps.toList.drop g.steps.size).foldr Term.bind t, deps)
+      some ((g'.steps.toList.drop g.steps.size).foldr Term.letE t, deps)
     else none
 termination_by structural e
 
@@ -268,23 +265,5 @@ def Model.program (M : Model A N D F) : Option (Program D F) := do
     some ⟨M.axes.map (·.2) ++ Stmt.doms M.body ++ Expr.doms M.ret,
       g.steps.toList, t, List.range k⟩
   else none
-
-variable {K : Type u} [Semifield K] [LinearOrder K] (I : Interp D F K)
-
-/-- The entries of the array of a model, in row-major order. -/
-def Model.entries (M : Model A N D F) : Option (List K) := (Model.program M).map (·.entries I)
-
-/-- The rows of the array of a model, along its last axis. -/
-def Model.rows (M : Model A N D F) : Option (List (List K)) := (Model.program M).map (·.rows I)
-
-/-- The rows of the array of a model in two compatible interpretations: those in the second are
-the images of those in the first. -/
-theorem Model.rows_map {L : Type u} [Semifield L] [LinearOrder L] {J : Interp D F L}
-    {φ : K →+* L} (hφ : StrictMono φ) (h : Interp.Compat φ I J) (M : Model A N D F) :
-    Model.rows J M = (Model.rows I M).map (List.map (List.map φ)) := by
-  simp only [Model.rows, Option.map_map]
-  congr 1
-  funext p
-  exact p.rows_map hφ h
 
 end Memo

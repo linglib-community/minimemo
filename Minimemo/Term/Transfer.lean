@@ -5,9 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Program.Basic
+public import Minimemo.Term.Basic
 public import Minimemo.Table.Map
-public import Mathlib.Algebra.Order.Ring.Abs
 
 /-!
 # A program in two fields of numbers
@@ -24,15 +23,10 @@ first. The interpretations of the operators of memo in two ordered fields are co
 So an array that Lean computes with rational numbers is the array of the same model with real
 numbers.
 
-## Main definitions
-
-* `Memo.Interp.Compat φ I J`: the interpretations `I` and `J` are compatible along `φ`.
-
 ## Main results
 
 * `Memo.Term.eval_map`: the table of a term.
 * `Memo.Program.entries_map`, `Memo.Program.rows_map`: the array of a program.
-* `Memo.Interp.compat_ofField`: the interpretations in two ordered fields are compatible.
 -/
 
 @[expose] public section
@@ -42,14 +36,6 @@ universe u
 namespace Memo
 
 variable {D : Type u} {F : ℕ → Type u} {K L : Type u}
-
-/-- Two interpretations are **compatible** along `φ` if their domains have the same sizes, and the
-values, the operators and the literals of the second are the images of those of the first. -/
-structure Interp.Compat (φ : K → L) (I : Interp D F K) (J : Interp D F L) : Prop where
-  size : ∀ d, (J.dom d).size = (I.dom d).size
-  val : ∀ d j, (J.dom d).val j = φ ((I.dom d).val j)
-  op : ∀ {k : ℕ} (o : Prim k ⊕ F k) (x : Fin k → K), J.op o (fun i ↦ φ (x i)) = φ (I.op o x)
-  lit : ∀ q, J.lit q = φ (I.lit q)
 
 section Eval
 
@@ -90,7 +76,7 @@ theorem Term.eval_map : ∀ (t : Term D F) (W : Array (Table K)),
     rw [Term.eval, Term.eval, Term.eval_map t W, Table.map_rename (map_zero φ)]
   | .best i t, W => by
     rw [Term.eval, Term.eval, Term.eval_map t W, Table.map_best φ hφ]
-  | .bind t₁ t₂, W => by
+  | .letE t₁ t₂, W => by
     rw [Term.eval, Term.eval, Term.eval_map t₁ W, ← Array.map_push]
     exact Term.eval_map t₂ _
 
@@ -122,24 +108,5 @@ theorem Program.rows_map (p : Program D F) : p.rows J = (p.rows I).map (List.map
   cases p.axes.getLast? <;> simp
 
 end Eval
-
-/-- The interpretations in two ordered fields are compatible along an embedding that preserves the
-order, if the domains and the outside functions are. -/
-theorem Interp.compat_ofField [Field K] [LinearOrder K] [IsStrictOrderedRing K] [Field L]
-    [LinearOrder L] [IsStrictOrderedRing L] {φ : K →+* L} (hφ : StrictMono φ)
-    {dom : D → Domain K} {dom' : D → Domain L} {call : {k : ℕ} → F k → (Fin k → K) → K}
-    {call' : {k : ℕ} → F k → (Fin k → L) → L} (hsize : ∀ d, (dom' d).size = (dom d).size)
-    (hval : ∀ d j, (dom' d).val j = φ ((dom d).val j))
-    (hcall : ∀ {k : ℕ} (f : F k) (x : Fin k → K), call' f (fun i ↦ φ (x i)) = φ (call f x)) :
-    Interp.Compat φ (.ofField dom call) (.ofField dom' call') where
-  size := hsize
-  val := hval
-  lit q := (map_ratCast φ q).symm
-  op o x := by
-    rcases o with p | f
-    · cases p <;>
-        simp [Interp.ofField, Prim.eval, hφ.injective.eq_iff, hφ.lt_iff_lt, hφ.le_iff_le,
-          apply_ite φ, abs_eq_max_neg, hφ.monotone.map_max]
-    · exact hcall f x
 
 end Memo

@@ -6,7 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Table.Get
-public import Minimemo.Belief.Basic
+public import Minimemo.Factor
 public import Mathlib.Tactic.SplitIfs
 
 /-!

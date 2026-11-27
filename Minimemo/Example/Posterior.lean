@@ -5,8 +5,8 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Compile
-public import Minimemo.Program.Measure
+public import Minimemo.Model
+public import Minimemo.Bridge.Measure
 public import Minimemo.Example.NaiveListener
 
 /-!

@@ -106,7 +106,7 @@ def main() -> int:
     for name in referenced:
         ps = " ".join(map(ident, parsed[name][0].static_parameters))
         fns.append(f"  | {ident(name + '_ref')}{f' ({ps} : ℚ)' if ps else ''} : Fn {len(axes_of(name))}")
-    lean = ["import Minimemo.Compile", "import Mathlib.Algebra.Order.Field.Rat", "",
+    lean = ["import Minimemo.Model", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent | {' | '.join(map(ident, agents))} deriving DecidableEq",
             f"inductive Name | {' | '.join(map(ident, names))} deriving DecidableEq",

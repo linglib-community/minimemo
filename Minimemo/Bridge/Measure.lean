@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Program.Belief
+public import Minimemo.Bridge.Term
 public import Minimemo.Belief.Measure
 
 /-!
