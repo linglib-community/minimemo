@@ -17,6 +17,7 @@ from memo.core import (EChoice, EFFI, EMemo, EWith, SChoose, SForAll, SKnows, SS
 from memo.parse import parse_memo
 
 import examples
+import memo2lean
 from memo2lean import ident, model
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -89,6 +90,10 @@ def main() -> int:
                     slot |= domain_of[choice_name(arg)]
     domains = sorted({d for ds in domain_of.values() for d in ds})
     values = {d: [int(v) for v in getattr(examples, d)] for d in domains}
+    for name, slots in calls.items():
+        point = [values[sorted(slot)[0]][0] for slot in slots]
+        if numpy.asarray(getattr(examples, name)(*point)).dtype == bool:
+            memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
     lean = ["import Minimemo.Semantics", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",

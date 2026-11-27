@@ -161,10 +161,16 @@ def snapshot[u: U, r: R]():
     return Pr[speaker.u_said == u] + 0 * r
 
 
+def boolean_sum[u: U, r: R]():
+    speaker: knows(r)
+    speaker: chooses(u_said in U, wpp=1 + 2 * (denotes(u_said, r) + (u_said == 8)))
+    return Pr[speaker.u_said == u]
+
+
 # A model comes after the models that it refers to.
 MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
           weighted, tempered, observes_that, observes_event, variance, chooses_two, forgets,
-          maximize, snapshot]
+          maximize, snapshot, boolean_sum]
 
 # Parameter values for the comparison with memo.
 ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}

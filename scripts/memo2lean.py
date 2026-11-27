@@ -18,6 +18,24 @@ BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV:
 UNARY = {Op.EXP: "exp", Op.LOG: "log", Op.NEG: "(- ·)", Op.ABS: "(|·|)", Op.UADD: "id"}
 
 
+# Names of foreign functions that return booleans. memo adds two booleans as "or".
+BOOLEAN_FUNCTIONS: set[str] = set()
+BOOLEAN_OPS = {Op.EQ, Op.NEQ, Op.LT, Op.LTE, Op.GT, Op.GTE, Op.AND, Op.OR}
+
+
+def is_boolean(e) -> bool:
+    match e:
+        case EOp(op=op) if op in BOOLEAN_OPS:
+            return True
+        case EOp(op=Op.ADD | Op.MUL, args=[a, b]):
+            return is_boolean(a) and is_boolean(b)
+        case EFFI(name=name):
+            return name in BOOLEAN_FUNCTIONS
+        case ELit(value=bool()):
+            return True
+    return False
+
+
 class Unsupported(Exception):
     """The model uses a construct outside the grammar of the memo paper."""
 
@@ -70,6 +88,8 @@ def expr(e) -> str:
             return f".op₁ {UNARY[op]} ({expr(a)})"
         case EOp(op=Op.ITE, args=[c, a, b]):
             return f".op (fun v ↦ cond3 (v 0) (v 1) (v 2)) ![{expr(c)}, {expr(a)}, {expr(b)}]"
+        case EOp(op=Op.ADD, args=[a, b]) if is_boolean(a) and is_boolean(b):
+            return f".op₂ either ({expr(a)}) ({expr(b)})"
         case EOp(op=op, args=[a, b]) if op in BINARY:
             return f".op₂ {BINARY[op]} ({expr(a)}) ({expr(b)})"
         case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
