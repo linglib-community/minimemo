@@ -9,7 +9,7 @@ from fractions import Fraction
 from textwrap import indent
 
 from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith, Op, SChoose,
-                       SForAll, SKnows, SObserves, SShow, SWith)
+                       SForAll, SForgetsAbout, SKnows, SObserves, SShow, SWith)
 from memo.parse import parse_memo
 
 BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq",
@@ -61,6 +61,9 @@ def expr(e) -> str:
             return f".query .{ident(who)} ({expr(inner)})"
         case EExpect(expr=inner, reduction="expectation"):
             return f".expect ({expr(inner)})"
+        case EExpect(expr=inner, reduction="variance"):
+            x = expr(inner)
+            return f".op₂ (· - ·) (.expect (.op₁ (· ^ 2) ({x}))) (.op₁ (· ^ 2) (.expect ({x})))"
         case EOp(op=Op.POW, args=[a, ELit(value=int(n))]) if n >= 0:
             return f".op₁ (· ^ {n}) ({expr(a)})"
         case EOp(op=op, args=[a]) if op in UNARY:
@@ -94,6 +97,11 @@ def stmt(s) -> str:
             return f"{head} {weight}" if len(head) + len(weight) < 88 else f"{head}\n  {weight}"
         case SShow(who=who, target_who=b, target_id=x, source_who=g, source_id=y):
             return f".observes .{ident(who)} .{ident(b)} .{ident(x)} {ref(g)} .{ident(y)}"
+        case SChoose(who=who, choices=choices, wpp=wpp, reduction="normalize"):
+            xs = ", ".join(f"(.{ident(x)}, .{d})" for x, d in choices)
+            return f".choosesMany .{ident(who)} [{xs}]\n  ({expr(wpp)})"
+        case SForgetsAbout(who=who, ids=ids):
+            return f".forgets .{ident(who)} [{', '.join('.' + ident(x) for x in ids)}]"
         case SObserves(who=who, what=what, how="probability"):
             return f".observesEvent .{ident(who)} ({expr(what)})"
         case SObserves(who=who, what=what, how="boolean"):

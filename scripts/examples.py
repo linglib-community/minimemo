@@ -126,9 +126,31 @@ def observes_event[u: U, r: R]():
     return Pr[listener.r_pick == r]
 
 
+def variance[u: U, r: R]():
+    listener: knows(u)
+    listener: thinks[
+        speaker: chooses(r_true in R, wpp=1),
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
+    ]
+    listener: observes [speaker.u_said] is u
+    return listener[Var[speaker.r_true]] + 0 * r
+
+
+def chooses_two[u: U, r: R]():
+    speaker: chooses(r_true in R, u_said in U, wpp=denotes(u_said, r_true) + 2 * (r_true == 5))
+    return Pr[speaker.u_said == u, speaker.r_true == r]
+
+
+def forgets[u: U, r: R]():
+    speaker: chooses(r_true in R, wpp=1 + (r_true == 5))
+    speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
+    speaker: forgets_about(r_true)
+    return Pr[speaker.u_said == u] + 0 * r
+
+
 # A model comes after the models that it refers to.
 MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
-          weighted, tempered, observes_that, observes_event]
+          weighted, tempered, observes_that, observes_event, variance, chooses_two, forgets]
 
 # Parameter values for the comparison with memo.
 ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}

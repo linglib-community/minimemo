@@ -38,7 +38,8 @@ frame that its statement leaves.
 ## Implementation notes
 
 The definitions follow the semantics figure of the memo paper, one case for each rule, and each
-case names its rule. The cases for `knows` and `observes_event`, which the figure does not have, follow memo. For
+case names its rule. The cases for `knows`, `observes_event`, `forgets_about` and a `chooses` of several values,
+which the figure does not have, follow memo. For
 `knows`, the agent's frame gets the choice as a known choice on the axis that it has in the
 current frame. For `observes_event`, the tensor of the agent's frame is multiplied by the value of
 the expression and divided by its sum over the uncertain choices. The figure writes the rules as equations with premises. Here they are
@@ -157,6 +158,39 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
           conds := Function.update Φα.conds (.agent β, x) (some (γ, y))
           ll := ll / Tensor.sum (χα.uncertainAxes dom) ll }
       some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
+    else none
+  -- S-CHOOSES, several values
+  | .choosesMany α xs e => do
+    let Φα := (Φ.agents α).getD (.empty (.agent α))
+    let Φα' : Frame A N D K :=
+      { Φα with
+        choices := xs.zipIdx.foldl (fun χ p ↦ χ.insert (.self, p.1.1) ⟨p.1.2, n + p.2, true⟩)
+          Φα.choices }
+    let v ← eval e Φα' (n + xs.length)
+    if v.IsKnown Φα' then
+      let axes := xs.zipIdx.map fun p ↦ (n + p.2, (dom p.1.2).size)
+      some ({ Φ with
+        choices := xs.zipIdx.foldl
+          (fun χ p ↦ χ.insert (.agent α, p.1.1) ⟨p.1.2, n + p.2, false⟩) Φ.choices
+        agents := Function.update Φ.agents α (some Φα')
+        ll := Φ.ll * (v.tensor / Tensor.sum axes v.tensor) }, n + xs.length)
+    else none
+  -- S-FORGETS
+  | .forgets α xs => do
+    let Φα ← Φ.agents α
+    if ∀ x ∈ xs, (Φα.choices.lookup (.self, x)).isSome ∧ (Φα.conds (.self, x)).isNone ∧
+        (Φ.choices.lookup (.agent α, x)).isSome then
+      let axes := (xs.filterMap fun x ↦
+        (Φ.choices.lookup (.agent α, x)).map fun c ↦ (c.axis, (dom c.dom).size)).dedup
+      let Φα' : Frame A N D K :=
+        { Φα with
+          choices := xs.foldl (fun χ x ↦ χ.erase (.self, x)) Φα.choices
+          conds := fun a ↦ if a.1 = .self ∧ a.2 ∈ xs then none else Φα.conds a }
+      some ({ Φ with
+        choices := xs.foldl (fun χ x ↦ χ.erase (.agent α, x)) Φ.choices
+        agents := Function.update Φ.agents α (some Φα')
+        conds := fun a ↦ if a.1 = .agent α ∧ a.2 ∈ xs then none else Φ.conds a
+        ll := Tensor.sum axes Φ.ll }, n)
     else none
   -- S-OBSERVES-EVENT
   | .observesEvent α e => do

@@ -33,7 +33,8 @@ term `.thinks listener (.chooses speaker r R (.lit 1))`.
 
 ## Implementation notes
 
-The constructors follow the grammar of the memo paper, with the statements `knows` and `observes_event` of memo added.
+The constructors follow the grammar of the memo paper, with the statements `knows`, `observes_event` and `forgets_about` of memo and its `chooses` of
+several values added.
 Three forms of that grammar are not constructors. A parameter of a model is an argument of the Lean function that builds the model. A
 reference to another model and the cost of a model are primitive operators, which is how the paper
 gives their meaning. The expression `Pr[e]` of memo is `E[e]` for an `e` with values 0 and 1.
@@ -86,6 +87,12 @@ inductive Stmt (A : Type u) (N : Type v) (D : Type w) (K : Type x) : Type (max u
   /-- The statement `α: observes [β.x] is γ.y`: the agent `α` learns the choice `x` of `β`, whose
   value is the choice `y` of `γ`. -/
   | observes (α β : A) (x : N) (γ : Ref A) (y : N)
+  /-- The statement `α: chooses(x in X, y in Y, wpp=e)`: the agent `α` chooses several values
+  together, with probability proportional to `e`. -/
+  | choosesMany (α : A) (xs : List (N × D)) (e : Expr A N D K)
+  /-- The statement `α: forgets_about(x, y)`: the agent `α` no longer has the choices `xs`, and
+  the current agent no longer follows them. -/
+  | forgets (α : A) (xs : List N)
   /-- The statement `α: observes_event(wpp=e)`: the agent `α` observes an event that happens with
   probability proportional to `e`. The statement `α: observes_that[e]` is the case in which `e`
   is one or zero. -/
