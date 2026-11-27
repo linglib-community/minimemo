@@ -151,7 +151,7 @@ def stmts(ss) -> str:
         else:
             out.append(stmt(ss[i]))
             i += 1
-    return " ;;\n".join(out)
+    return " ;;\n".join(out) if out else ".pass"
 
 
 def model(f, name: str | None = None) -> str:
