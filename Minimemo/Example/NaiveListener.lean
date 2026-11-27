@@ -7,6 +7,7 @@ module
 
 public import Minimemo.Compile
 public import Mathlib.Algebra.Order.Field.Rat
+public import Mathlib.Algebra.Field.Defs
 
 /-!
 # The naive listener
@@ -30,7 +31,8 @@ speakers choose in opposite orders. The listeners return the same array.
 
 ## Main definitions
 
-* `Memo.NaiveListener.model`: the model, as a memo program.
+* `Memo.NaiveListener.modelOf K`: the model, as a memo program with numbers in the field `K`.
+* `Memo.NaiveListener.model`: the model with rational numbers.
 * `Memo.NaiveListener.utteranceFirst`: the model in which the speaker chooses the utterance first.
 * `Memo.NaiveListener.rows`: the array that the model returns, as a list of rows.
 
@@ -76,18 +78,27 @@ inductive Dom
 
 /-- The utterances are *green*, *pink*, *square* and *round*, with the values 0 to 3. The
 referents are a green square, a green circle and a pink circle, with the values 0 to 2. -/
-def dom : Dom → Domain ℚ
+def domOf (K : Type) [Field K] : Dom → Domain K
   | .U => ⟨4, fun j ↦ j⟩
   | .R => ⟨3, fun j ↦ j⟩
 
+/-- The domains with rational numbers. -/
+abbrev dom : Dom → Domain ℚ := domOf ℚ
+
 /-- The **denotation** has the value one when the utterance `u` describes the referent `r`, and
 zero otherwise. -/
-def denotes (u r : ℚ) : ℚ :=
+def denotesOf {K : Type} [Field K] [LinearOrder K] (u r : K) : K :=
   if (u = 0 ∧ (r = 0 ∨ r = 1)) ∨ (u = 1 ∧ r = 2) ∨ (u = 2 ∧ r = 0) ∨ (u = 3 ∧ (r = 1 ∨ r = 2))
   then 1 else 0
 
+/-- The denotation with rational numbers. -/
+abbrev denotes (u r : ℚ) : ℚ := denotesOf u r
+
 /-- The operator `==` of memo: one when its arguments are equal, and zero otherwise. -/
-def eq (a b : ℚ) : ℚ := if a = b then 1 else 0
+def eqOf {K : Type} [Field K] [LinearOrder K] (a b : K) : K := if a = b then 1 else 0
+
+/-- The operator `==` with rational numbers. -/
+abbrev eq (a b : ℚ) : ℚ := eqOf a b
 
 /-- The model of the naive listener:
 ```
@@ -100,16 +111,19 @@ def eq (a b : ℚ) : ℚ := if a = b then 1 else 0
   return Pr[listener.r_pick == r]
 ```
 -/
-def model : Model Agent Name Dom ℚ where
+def modelOf (K : Type) [Field K] [LinearOrder K] : Model Agent Name Dom K where
   axes := [(.u, .U), (.r, .R)]
   body :=
     .thinks .listener
       (.chooses .speaker .rTrue .R (.lit 1) ;;
-       .chooses .speaker .uSaid .U (.op₂ denotes (.choice .uSaid) (.choice .rTrue))) ;;
+       .chooses .speaker .uSaid .U (.op₂ denotesOf (.choice .uSaid) (.choice .rTrue))) ;;
     .observes .listener .speaker .uSaid .self .u ;;
     .chooses .listener .rPick .R
-      (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
-  ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
+      (.expect (.op₂ eqOf (.query .speaker (.choice .rTrue)) (.choice .rPick)))
+  ret := .expect (.op₂ eqOf (.query .listener (.choice .rPick)) (.choice .r))
+
+/-- The model with rational numbers, which Lean evaluates. -/
+abbrev model : Model Agent Name Dom ℚ := modelOf ℚ
 
 /-- The number of referents that the utterance `u` describes. -/
 def count (u : ℚ) : ℚ := ∑ t ∈ Finset.range 3, denotes u t
