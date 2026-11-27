@@ -1,3 +1,4 @@
 .lake/
 scratch/
 __pycache__/
+scripts/fuzz_models.py

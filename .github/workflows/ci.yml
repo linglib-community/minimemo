@@ -1,0 +1,23 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install memo-lang==1.3.3
+      - name: compare with memo on the example models
+        run: python scripts/difftest.py
+      - name: compare with memo on random models
+        run: |
+          python scripts/fuzz.py 1 25
+          python scripts/difftest.py fuzz_models -v

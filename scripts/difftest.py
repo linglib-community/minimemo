@@ -1,6 +1,6 @@
 """Check that memo and minimemo give the same arrays on the example models.
 
-    python scripts/difftest.py
+    python scripts/difftest.py [module]
 """
 import dataclasses
 import itertools
@@ -17,7 +17,9 @@ from memo.core import (EChoice, EFFI, EMemo, EWith, SChoose, SForAll, SKnows, SS
                        SWith)
 from memo.parse import parse_memo
 
-import examples
+import importlib
+
+examples = importlib.import_module(next((a for a in sys.argv[1:] if not a.startswith('-')), 'examples'))
 import memo2lean
 from memo2lean import ident, model
 
@@ -181,6 +183,9 @@ def main() -> int:
             ok = len(got) == len(want) and all(abs(g - w) < 1e-5 for g, w in zip(got, want))
         failed += not ok
         print(f"{'ok  ' if ok else 'FAIL'} {f.__name__}")
+        if not ok and "-v" in sys.argv:
+            print("   memo:", [round(float(w), 5) for w in want])
+            print("   lean:", [round(g, 5) for g in got])
     print(f"{len(raw) - failed} of {len(raw)} models agree")
     return 1 if failed else 0
 

@@ -128,6 +128,7 @@ termination_by structural e
 /-- The **effect** of a statement on a frame and on the next free axis `n`. -/
 def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D K × ℕ) :=
   match s with
+  | .pass => some (Φ, n)
   -- S-SEQ
   | .seq s₁ s₂ => do
     let (Φ', n') ← run s₁ Φ n

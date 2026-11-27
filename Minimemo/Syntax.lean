@@ -109,6 +109,8 @@ inductive Stmt (A : Type u) (N : Type v) (D : Type w) (K : Type x) : Type (max u
   /-- The statement `α: thinks[s]`: the statement `s` happens in the agent `α`'s model of the
   world. -/
   | thinks (α : A) (s : Stmt A N D K)
+  /-- The statement `pass`: nothing happens. -/
+  | pass
   /-- The statement `s₁; s₂`: `s₁` happens and then `s₂`. -/
   | seq (s₁ s₂ : Stmt A N D K)
 
