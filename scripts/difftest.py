@@ -131,8 +131,18 @@ def main() -> int:
             ps = " ".join(map(ident, parsed[f.__name__][0].static_parameters))
             binder = f" ({ps} {args} : ℚ)" if ps else f" ({args} : ℚ)"
             m = f"({ident(f.__name__)} {ps})" if ps else ident(f.__name__)
-            lean += [f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
-                     f"  Model.ref dom {m} [{', '.join(args.split())}]", ""]
+            if ps:
+                lean += [f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
+                         f"  Model.ref dom {m} [{', '.join(args.split())}]", ""]
+            else:  # the array is computed once
+                axes = [s.domain for s in parsed[f.__name__][1] if isinstance(s, SForAll)]
+                at = "0"
+                for i, d in enumerate(axes):
+                    at = f"({at}) * {len(values[d])} + (dom .{d}).index a{i}"
+                lean += [f"def {ident(f.__name__ + '_table')} : Array ℚ :=",
+                         f"  ((Model.entries dom {m}).getD []).toArray",
+                         f"def {ident(f.__name__ + '_ref')}{binder} : ℚ :=",
+                         f"  {ident(f.__name__ + '_table')}.getD ({at}) 0", ""]
     args_of = getattr(examples, "ARGS", {})
     for f in raw:
         given = "".join(f" {rat(a)}" for a in args_of.get(f.__name__, ()))
