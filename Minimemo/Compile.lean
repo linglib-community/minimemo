@@ -33,6 +33,7 @@ through these links.
 * `Memo.Stmt.steps dom s S g`: the scope after the statement `s`, with its steps added to
   `g`.
 * `Memo.Model.program dom M`: the program of the model `M`, if memo accepts the model.
+* `Memo.Model.size dom M`: the size of each choice of the model `M`.
 * `Memo.Model.entries dom M`: the entries of the array of `M`, in row-major order.
 * `Memo.Model.rows dom M`: the same entries, as rows along the last axis.
 -/
@@ -118,27 +119,28 @@ end Scope
 def allSome {k : ℕ} {β : Type*} (o : Fin k → Option β) : Option (Fin k → β) :=
   if h : ∀ i, (o i).isSome then some fun i ↦ (o i).get (h i) else none
 
+variable (dom : D → Domain K)
+
 mutual
 
-/-- The number of choices that an expression imagines. -/
-def Expr.fresh : Expr A N D K → ℕ
-  | .lit _ | .choice _ => 0
-  | .op _ es => ((List.finRange _).map fun i ↦ Expr.fresh (es i)).sum
-  | .query _ e | .expect e => Expr.fresh e
-  | .imagine s e => Stmt.fresh s + Expr.fresh e
+/-- The sizes of the choices that an expression imagines, in the order of their numbers. -/
+def Expr.sizes : Expr A N D K → List ℕ
+  | .lit _ | .choice _ => []
+  | .op _ es => (List.finRange _).flatMap fun i ↦ Expr.sizes (es i)
+  | .query _ e | .expect e => Expr.sizes e
+  | .imagine s e => Stmt.sizes s ++ Expr.sizes e
 
-/-- The number of choices that a statement makes, with those that its expressions imagine. -/
-def Stmt.fresh : Stmt A N D K → ℕ
-  | .chooses _ _ _ e | .choosesMax _ _ _ e => 1 + Expr.fresh e
-  | .choosesMany _ xs e => xs.length + Expr.fresh e
-  | .observesEvent _ e => Expr.fresh e
-  | .thinks _ s => Stmt.fresh s
-  | .seq s₁ s₂ => Stmt.fresh s₁ + Stmt.fresh s₂
-  | .observes .. | .knows .. | .snapshot .. | .forgets .. | .pass => 0
+/-- The sizes of the choices that a statement makes, with those that its expressions imagine, in
+the order of their numbers. -/
+def Stmt.sizes : Stmt A N D K → List ℕ
+  | .chooses _ _ X e | .choosesMax _ _ X e => (dom X).size :: Expr.sizes e
+  | .choosesMany _ xs e => (xs.map fun p ↦ (dom p.2).size) ++ Expr.sizes e
+  | .observesEvent _ e => Expr.sizes e
+  | .thinks _ s => Stmt.sizes s
+  | .seq s₁ s₂ => Stmt.sizes s₁ ++ Stmt.sizes s₂
+  | .observes .. | .knows .. | .snapshot .. | .forgets .. | .pass => []
 
 end
-
-variable (dom : D → Domain K)
 
 mutual
 
@@ -148,8 +150,8 @@ def Expr.term (e : Expr A N D K) (S : Scope A N D) (g : Gen K) : Option (Term K 
   | .lit r => some (.lit r, [])
   | .op f es =>
     (allSome fun i ↦ Expr.term (es i) S
-      { g with next := g.next + ((List.finRange _).map fun j ↦
-        if j < i then Expr.fresh (es j) else 0).sum }).map fun ts ↦
+      { g with next := g.next + (((List.finRange _).take i).flatMap fun j ↦
+        Expr.sizes dom (es j)).length }).map fun ts ↦
       (.op f fun i ↦ (ts i).1, ((List.finRange _).flatMap fun i ↦ (ts i).2).dedup)
   | .choice x =>
     (S.entries.lookup (.self, x)).map fun c ↦
@@ -167,7 +169,7 @@ def Expr.term (e : Expr A N D K) (S : Scope A N D) (g : Gen K) : Option (Term K 
     let (S', g') ← Stmt.steps s S g
     let (t, deps) ← Expr.term e S' g'
     if deps.all fun i ↦ i ∈ S'.certain ∧ S.entries.any (·.2.index == i) then
-      some ((g'.steps.extract g.steps.size g'.steps.size).foldr Term.after t, deps)
+      some ((g'.steps.toList.drop g.steps.size).foldr Term.after t, deps)
     else none
 termination_by structural e
 
@@ -188,7 +190,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
       let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)] (.rename Sα'.links t))
       some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
-        { g' with next := g.next + 1 + Expr.fresh e })
+        { g' with next := g.next + 1 + (Expr.sizes dom e).length })
     else none
   | .choosesMax α x X e => do
     let Sα := S.agent α
@@ -198,7 +200,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
       let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)]
         (.rename Sα'.links (.best g.next (dom X).size t)))
       some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
-        { g' with next := g.next + 1 + Expr.fresh e })
+        { g' with next := g.next + 1 + (Expr.sizes dom e).length })
     else none
   | .choosesMany α xs e => do
     let Sα := S.agent α
@@ -211,7 +213,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
       let (g', w) := g.push (.chooses S.table
         (xs.zipIdx.map fun p ↦ (g.next + p.2, (dom p.1.2).size)) (.rename Sα'.links t))
       some ({ S'.setAgent α Sα' with table := w },
-        { g' with next := g.next + xs.length + Expr.fresh e })
+        { g' with next := g.next + xs.length + (Expr.sizes dom e).length })
     else none
   | .observes α β x γ y => do
     let Sα ← S.agents α
@@ -230,7 +232,7 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     let (t, _) ← Expr.term e Sα g
     let (g', w) := g.push (.weighs Sα.table t)
     let (g'', w') := g'.push (.observes w (Sα.uncertain dom))
-    some (S.setAgent α { Sα with table := w' }, { g'' with next := g.next + Expr.fresh e })
+    some (S.setAgent α { Sα with table := w' }, { g'' with next := g.next + (Expr.sizes dom e).length })
   | .knows α γ y => do
     let c ← S.entries.lookup (γ, y)
     let Sα := S.agent α
@@ -273,6 +275,11 @@ def Model.program (M : Model A N D K) : Option (Program K) := do
   if deps.all (· < k) then
     some ⟨g.steps.toList, t, M.axes.zipIdx.map fun p ↦ (p.2, (dom p.1.2).size)⟩
   else none
+
+/-- The size of each choice of a model: the sizes of its axes, then of the choices of its
+statement, then of the choices that its expression imagines, in the order of their numbers. -/
+def Model.size (M : Model A N D K) (i : ℕ) : ℕ :=
+  ((M.axes.map fun p ↦ (dom p.2).size) ++ Stmt.sizes dom M.body ++ Expr.sizes dom M.ret).getD i 0
 
 /-- The entries of the array of a model, in row-major order. -/
 def Model.entries [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List K) :=

@@ -13,6 +13,7 @@ public import Minimemo.Table.Factor
 public import Minimemo.Program.Belief
 public import Minimemo.Program.Sized
 public import Minimemo.Program.Measure
+public import Minimemo.Compile.Sized
 public import Minimemo.Example.NaiveListener
 public import Minimemo.Example.PragmaticListener
 public import Minimemo.Example.Knows
