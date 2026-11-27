@@ -73,6 +73,12 @@ positions on that axis. -/
 def sumAxis [AddCommMonoid K] (i m : ℕ) (z : Tensor K) : Tensor K :=
   fun σ ↦ ∑ j ∈ Finset.range m, z (Function.update σ i j)
 
+/-- The **maximum along an axis** `i` of size `m` is the greatest of the values of a tensor at the
+first `m` positions on that axis. -/
+def maxAxis [LinearOrder K] (i m : ℕ) (z : Tensor K) : Tensor K :=
+  fun σ ↦ ((List.range m).map fun j ↦ z (Function.update σ i j)).foldl max
+    (z (Function.update σ i 0))
+
 /-- The **sum along the axes** in `I`, a list of axes with their sizes, sums along each of them in
 turn. -/
 def sum [AddCommMonoid K] (I : List (ℕ × ℕ)) (z : Tensor K) : Tensor K :=

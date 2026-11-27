@@ -12,7 +12,8 @@ from fractions import Fraction
 
 import numpy
 from memo import memo
-from memo.core import EChoice, EFFI, EMemo, EWith, SChoose, SForAll, SKnows, SShow, SWith
+from memo.core import (EChoice, EFFI, EMemo, EWith, SChoose, SForAll, SKnows, SShow, SSnapshot,
+                       SWith)
 from memo.parse import parse_memo
 
 import examples
@@ -70,6 +71,8 @@ def main() -> int:
                     add(agents, a)
                 case SShow(who=a, target_who=b, source_who=g) :
                     add(agents, a); add(agents, b); add(agents, g)
+                case SSnapshot(who=a, alias=b):
+                    add(agents, a); add(agents, b)
                 case SKnows(who=a, source_who=g):
                     add(agents, a); add(agents, g)
                 case EChoice(id=x):

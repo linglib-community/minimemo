@@ -86,7 +86,8 @@ theorem allSome_eq_some {k : ℕ} {β : Type*} {o : Fin k → Option β} {b : Fi
   · refine iff_of_false (by simp) fun hb ↦ h fun i ↦ ?_
     simp [hb i]
 
-variable [DecidableEq A] [DecidableEq N] [DecidableEq D] [Semifield K] (dom : D → Domain K)
+variable [DecidableEq A] [DecidableEq N] [DecidableEq D] [Semifield K] [LinearOrder K]
+  (dom : D → Domain K)
 
 mutual
 
@@ -159,6 +160,35 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
           ll := ll / Tensor.sum (χα.uncertainAxes dom) ll }
       some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
     else none
+  -- S-CHOOSES, to maximize
+  | .choosesMax α x X e => do
+    let Φα := (Φ.agents α).getD (.empty (.agent α))
+    let Φα' : Frame A N D K := { Φα with choices := Φα.choices.insert (.self, x) ⟨X, n, true⟩ }
+    let v ← eval e Φα' (n + 1)
+    if v.IsKnown Φα' then
+      let best : Tensor K := fun σ ↦
+        if v.tensor σ = v.tensor.maxAxis n (dom X).size σ then 1 else 0
+      some ({ Φ with
+        choices := Φ.choices.insert (.agent α, x) ⟨X, n, false⟩
+        agents := Function.update Φ.agents α (some Φα')
+        ll := Φ.ll * (best / best.sumAxis n (dom X).size) }, n + 1)
+    else none
+  -- S-SNAPSHOT
+  | .snapshot α β => do
+    let Φα := (Φ.agents α).getD (.empty (.agent α))
+    let Φβ : Frame A N D K :=
+      { Φα with
+        name := .agent β
+        conds := fun a ↦ if (Φα.choices.lookup a).isSome then some a else Φα.conds a }
+    let Φα' : Frame A N D K :=
+      { Φα with
+        choices := Φα.choices.entries.foldl
+          (fun χ p ↦ if p.1.1 = .self then χ.insert (.agent β, p.1.2) p.2 else χ) Φα.choices
+        agents := Function.update Φα.agents β (some Φβ)
+        conds := fun a ↦
+          if a.1 = .agent β ∧ (Φα.choices.lookup (.self, a.2)).isSome then some (.agent α, a.2)
+          else Φα.conds a }
+    some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
   -- S-CHOOSES, several values
   | .choosesMany α xs e => do
     let Φα := (Φ.agents α).getD (.empty (.agent α))

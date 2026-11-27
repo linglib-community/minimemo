@@ -90,6 +90,12 @@ inductive Stmt (A : Type u) (N : Type v) (D : Type w) (K : Type x) : Type (max u
   /-- The statement `α: chooses(x in X, y in Y, wpp=e)`: the agent `α` chooses several values
   together, with probability proportional to `e`. -/
   | choosesMany (α : A) (xs : List (N × D)) (e : Expr A N D K)
+  /-- The statement `α: chooses(x in X, to_maximize=e)`: the agent `α` chooses `x` from the domain
+  `X` uniformly among the values at which `e` is greatest. -/
+  | choosesMax (α : A) (x : N) (X : D) (e : Expr A N D K)
+  /-- The statement `α: snapshots_self_as(β)`: the agent `α` gets a model of an agent `β` that is a
+  copy of `α` as it is now. -/
+  | snapshot (α β : A)
   /-- The statement `α: forgets_about(x, y)`: the agent `α` no longer has the choices `xs`, and
   the current agent no longer follows them. -/
   | forgets (α : A) (xs : List N)

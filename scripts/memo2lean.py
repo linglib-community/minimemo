@@ -9,7 +9,7 @@ from fractions import Fraction
 from textwrap import indent
 
 from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith, Op, SChoose,
-                       SForAll, SForgetsAbout, SKnows, SObserves, SShow, SWith)
+                       SForAll, SForgetsAbout, SKnows, SObserves, SShow, SSnapshot, SWith)
 from memo.parse import parse_memo
 
 BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq",
@@ -100,6 +100,10 @@ def stmt(s) -> str:
         case SChoose(who=who, choices=choices, wpp=wpp, reduction="normalize"):
             xs = ", ".join(f"(.{ident(x)}, .{d})" for x, d in choices)
             return f".choosesMany .{ident(who)} [{xs}]\n  ({expr(wpp)})"
+        case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="maximize"):
+            return f".choosesMax .{ident(who)} .{ident(name)} .{domain}\n  ({expr(wpp)})"
+        case SSnapshot(who=who, alias=alias):
+            return f".snapshot .{ident(who)} .{ident(alias)}"
         case SForgetsAbout(who=who, ids=ids):
             return f".forgets .{ident(who)} [{', '.join('.' + ident(x) for x in ids)}]"
         case SObserves(who=who, what=what, how="probability"):

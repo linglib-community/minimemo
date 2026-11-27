@@ -148,9 +148,23 @@ def forgets[u: U, r: R]():
     return Pr[speaker.u_said == u] + 0 * r
 
 
+def maximize[u: U, r: R]():
+    speaker: knows(r)
+    speaker: chooses(u_said in U, to_maximize=denotes(u_said, r) + 2 * (u_said == 8))
+    return Pr[speaker.u_said == u]
+
+
+def snapshot[u: U, r: R]():
+    speaker: chooses(r_true in R, wpp=1 + 2 * (r_true == 5))
+    speaker: snapshots_self_as(past)
+    speaker: chooses(u_said in U, wpp=denotes(u_said, past.r_true))
+    return Pr[speaker.u_said == u] + 0 * r
+
+
 # A model comes after the models that it refers to.
 MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other,
-          weighted, tempered, observes_that, observes_event, variance, chooses_two, forgets]
+          weighted, tempered, observes_that, observes_event, variance, chooses_two, forgets,
+          maximize, snapshot]
 
 # Parameter values for the comparison with memo.
 ARGS = {"weighted": (0.5, 3), "tempered": (0.25,)}
