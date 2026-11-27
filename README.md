@@ -17,6 +17,7 @@ Run a model:
 Run tests:
 
     lake test
+    pytest
 
 Translate a memo model (requires memo):
 
