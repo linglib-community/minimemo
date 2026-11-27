@@ -27,6 +27,8 @@ The tables so far are assumed sized, as the tables of a program are.
 * `Memo.Step.toBelief_observes`: the table of an `observes` step.
 * `Memo.Step.toBelief_weighs`, `Memo.Step.toBelief_forgets`: the tables of the other steps.
 * `Memo.Term.toFactor_expect`: the table of an expectation term is the expectation in the belief.
+* `Memo.Term.toFactor_val`, `Memo.Term.toFactor_op`: the tables of the value of a choice and of an
+  operator applied to terms.
 -/
 
 @[expose] public section
@@ -103,5 +105,31 @@ theorem Term.toFactor_expect (I : List ℕ) (hI : I.Nodup) (t : Term K) :
   have ht := Term.sized_eval t W hW
   simp only [Term.eval, Belief.expect]
   rw [withSizes, Table.toFactor_sumOver I hI (ht.mul hw), Table.toFactor_mul ht hw]
+
+omit hW in
+/-- The table of the value of a choice has, at an assignment, the value at the position of the
+choice. -/
+theorem Term.toFactor_val (i : ℕ) (v : ℕ → K) (σ : ∀ i, Fin (size i)) :
+    Table.toFactor size ((Term.val i v).eval size W) σ = v (σ i) := by
+  rw [Term.eval]
+  exact Table.get_ofFn _ _ (fun x hx ↦ by
+    obtain rfl : x = (i, size i) := by simpa using hx
+    exact (σ i).isLt) fun σ₁ σ₂ h ↦ by rw [h (i, size i) (by simp)]
+
+/-- The table of an operator applied to terms has, at an assignment, the value of the operator at
+the numbers of their tables. -/
+theorem Term.toFactor_op {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Term K)
+    (σ : ∀ i, Fin (size i)) :
+    Table.toFactor size ((Term.op f ts).eval size W) σ =
+      f fun i ↦ Table.toFactor size ((ts i).eval size W) σ := by
+  rw [Term.eval]
+  simp only [Table.toFactor]
+  rw [Table.get_op f (fun i ↦ by simpa using Term.sized_eval (ts i) W hW) fun i ↦ (σ i).isLt]
+  simp
+
+omit hW in
+/-- A term read through no links has the table of the term. -/
+theorem Term.eval_rename_nil (t : Term K) : (Term.rename [] t).eval size W = t.eval size W := by
+  rw [Term.eval, List.filter_nil, Table.rename_nil]
 
 end Memo

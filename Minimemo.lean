@@ -17,3 +17,4 @@ public import Minimemo.Example.NaiveListener
 public import Minimemo.Example.PragmaticListener
 public import Minimemo.Example.Knows
 public import Minimemo.Example.Syntax
+public import Minimemo.Example.Posterior

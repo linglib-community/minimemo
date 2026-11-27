@@ -75,6 +75,47 @@ theorem Sized.op [Zero K] {k : ℕ} (f : (Fin k → K) → K) {ts : Fin k → Ta
   · simp at h'
   · exact h i v h'
 
+theorem key_mem_foldl_union_acc {α : Type*} (g : α → List (ℕ × ℕ)) (l : List α)
+    (acc : List (ℕ × ℕ)) {k : ℕ} (hk : k ∈ acc.map (·.1)) :
+    k ∈ (l.foldl (fun vars i ↦ union vars (g i)) acc).map (·.1) := by
+  induction l generalizing acc with
+  | nil => exact hk
+  | cons a l ih =>
+    refine ih _ (key_mem_distinct ?_)
+    rw [List.map_append]
+    exact List.mem_append_left _ hk
+
+theorem key_mem_foldl_union {α : Type*} (g : α → List (ℕ × ℕ)) (l : List α)
+    (acc : List (ℕ × ℕ)) {k : ℕ} {i : α} (hi : i ∈ l) (hk : k ∈ (g i).map (·.1)) :
+    k ∈ (l.foldl (fun vars i ↦ union vars (g i)) acc).map (·.1) := by
+  induction l generalizing acc with
+  | nil => simp at hi
+  | cons a l ih =>
+    rcases List.mem_cons.1 hi with rfl | hi
+    · refine key_mem_foldl_union_acc g l _ (key_mem_distinct ?_)
+      rw [List.map_append]
+      exact List.mem_append_right _ hk
+    · exact ih _ hi
+
+/-- The table that combines sized tables with `f` has, at an assignment in range, the value of `f`
+at their numbers. -/
+theorem get_op [Zero K] {k : ℕ} (f : (Fin k → K) → K) {ts : Fin k → Table K}
+    (h : ∀ i, (ts i).Sized size) {σ : ℕ → ℕ} (hσ : ∀ i, σ i < size i) :
+    (Table.op f ts).get σ = f fun i ↦ (ts i).get σ := by
+  refine get_ofFn _ _ (fun v hv ↦ ?_) fun σ₁ σ₂ hagree ↦ ?_
+  · rw [Sized.op f h v hv]
+    exact hσ _
+  · congr 1
+    funext i
+    refine (ts i).get_congr fun v hv ↦ ?_
+    obtain ⟨v', hv', hvv'⟩ := List.mem_map.1 (key_mem_foldl_union (fun i ↦ (ts i).vars) _ []
+      (List.mem_finRange i) (List.mem_map_of_mem (f := (·.1)) hv))
+    have := hagree v' hv'
+    rwa [hvv'] at this
+
+theorem rename_nil [Zero K] (t : Table K) : t.rename [] = t := by
+  simp [Table.rename]
+
 end Table
 
 theorem sized_getD [One K] {W : Array (Table K)} (hW : ∀ x ∈ W, x.Sized size) (w : ℕ) :
