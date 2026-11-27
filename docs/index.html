@@ -66,7 +66,8 @@ def naive : Model Agent Name Dom ℚ where
       (.chooses .speaker .rTrue .R (.lit 1) ;;
       .chooses .speaker .uSaid .U (.op₂ denotes (.choice .uSaid) (.choice .rTrue))) ;;
     .observes .listener .speaker .uSaid .self .u ;;
-    .chooses .listener .rPick .R (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
+    .chooses .listener .rPick .R
+      (.expect (.op₂ eq (.query .speaker (.choice .rTrue)) (.choice .rPick)))
   ret := .expect (.op₂ eq (.query .listener (.choice .rPick)) (.choice .r))
 </pre>
 
@@ -213,8 +214,8 @@ theorem run_chooses_mul {c : K} (hc : c ≠ 0) (α : A) (x : N) (X : D) (e : Exp
 <h2>Notes</h2>
 
 <ul>
-<li>minimemo covers the grammar of the memo paper: <code>chooses</code>, <code>observes</code>,
-<code>thinks</code>, queries, <code>E</code> and <code>Pr</code>, and <code>imagine</code>.</li>
+<li>minimemo covers <code>chooses</code>, <code>observes</code>, <code>thinks</code>,
+<code>knows</code>, queries, <code>E</code> and <code>Pr</code>, and <code>imagine</code>.</li>
 <li>In memo's demonstration the pragmatic speaker's weight is the exponential of a multiple of
 the listener's probability. Here it is the probability, so that the numbers are rational.</li>
 <li>A foreign function such as <code>denotes</code> is written a second time, in Lean.</li>

@@ -1,8 +1,8 @@
 """Print a memo model as a minimemo term.
 
 The model is read with memo's own parser, so this file only prints. It covers the grammar of the
-memo paper: `chooses`, `observes [..] is ..`, `thinks`, choices, queries, `E[..]`, `Pr[..]`,
-`imagine`, arithmetic, and calls of foreign functions and of other models.
+memo paper and `knows`: `chooses`, `observes [..] is ..`, `thinks`, `knows`, choices, queries,
+`E[..]`, `Pr[..]`, `imagine`, arithmetic, and calls of foreign functions and of other models.
 
 The Lean file that receives the output supplies the types `Agent`, `Name` and `Dom`, the function
 `dom`, and a Lean function for each foreign function and each referenced model, under the same
@@ -17,7 +17,7 @@ from fractions import Fraction
 from textwrap import indent
 
 from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith, Op, SChoose,
-                       SForAll, SShow, SWith)
+                       SForAll, SKnows, SShow, SWith)
 from memo.parse import parse_memo
 
 BINARY = {Op.ADD: "(· + ·)", Op.SUB: "(· - ·)", Op.MUL: "(· * ·)", Op.DIV: "(· / ·)", Op.EQ: "eq"}
@@ -69,13 +69,20 @@ def expr(e) -> str:
     raise Unsupported(type(e).__name__)
 
 
+def ref(who: str) -> str:
+    return ".self" if who == "self" else f"(.agent .{ident(who)})"
+
+
 def stmt(s) -> str:
     match s:
         case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="normalize"):
-            return f".chooses .{ident(who)} .{ident(name)} .{domain} ({expr(wpp)})"
+            head = f".chooses .{ident(who)} .{ident(name)} .{domain}"
+            weight = f"({expr(wpp)})"
+            return f"{head} {weight}" if len(head) + len(weight) < 88 else f"{head}\n  {weight}"
         case SShow(who=who, target_who=b, target_id=x, source_who=g, source_id=y):
-            source = ".self" if g == "self" else f"(.agent .{ident(g)})"
-            return f".observes .{ident(who)} .{ident(b)} .{ident(x)} {source} .{ident(y)}"
+            return f".observes .{ident(who)} .{ident(b)} .{ident(x)} {ref(g)} .{ident(y)}"
+        case SKnows(who=who, source_who=g, source_id=y):
+            return f".knows .{ident(who)} {ref(g)} .{ident(y)}"
         case SWith(who=who, stmt=inner):
             return f".thinks .{ident(who)} ({stmt(inner)})"
     raise Unsupported(type(s).__name__)

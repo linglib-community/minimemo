@@ -16,10 +16,11 @@ public import Mathlib.Data.List.AList
 
 This file defines the frames in which memo evaluates a model.
 
-A frame of mind belongs to an agent. It records the choices the agent is aware of, each known to
-the agent or uncertain; a frame for each of the other agents that this agent has a model of; for
-each choice that the agent has observed, the choice of the enclosing frame that it was observed to
-equal; and a tensor, the probability of the uncertain choices given the known ones.
+A frame of mind belongs to an agent. It records the name of the agent; the choices the agent is
+aware of, each known to the agent or uncertain; a frame for each of the other agents that this
+agent has a model of; for each choice that the agent has observed or knows, the choice of the
+enclosing frame that it equals; and a tensor, the probability of the uncertain choices given the
+known ones.
 
 For example, when a listener thinks that a speaker chooses a referent, the frame of the listener
 has the choice of the speaker as an uncertain choice, and contains a frame of the speaker in which
@@ -30,7 +31,8 @@ that choice is the speaker's own and is known.
 * `Memo.Address A N`: the type `Ref A × N` of names of choices.
 * `Memo.Choice D`: a domain, an axis and whether the choice is known.
 * `Memo.Frame A N D K`: a frame of mind.
-* `Memo.Frame.empty`: the frame with no choices, no agents and the tensor with value one.
+* `Memo.Frame.empty name`: the frame of `name` with no choices, no agents and the tensor with
+  value one.
 * `Memo.Value A N K`: a tensor with the set of choices that it depends on.
 * `Memo.Frame.IsKnown Φ a`: the choice `a` is known in the frame `Φ`.
 * `Memo.Value.IsKnown v Φ`: every choice that `v` depends on is known in the frame `Φ`.
@@ -73,16 +75,20 @@ structure Choice (D : Type w) where
 /-- A **choice map** gives the choice at each address that an agent is aware of. -/
 abbrev ChoiceMap (A : Type u) (N : Type v) (D : Type w) := AList fun _ : Address A N ↦ Choice D
 
-/-- A **frame of mind** of an agent has the choices that the agent is aware of, a frame for each
-agent that it has a model of, the choice of the enclosing frame that each observed choice was
-observed to equal, and a tensor: the probability of the uncertain choices given the known ones. -/
+/-- A **frame of mind** of an agent has the name of the agent, the choices that the agent is aware
+of, a frame for each agent that it has a model of, the choice of the enclosing frame that each
+observed or known choice equals, and a tensor: the probability of the uncertain choices given the
+known ones. -/
 structure Frame (A : Type u) (N : Type v) (D : Type w) (K : Type x) : Type (max u v w x) where
+  /-- The agent whose frame this is, as the enclosing frame names it. The frame of a model, which
+  no frame encloses, has the name `self`. -/
+  name : Ref A
   /-- The choices that the agent is aware of. -/
   choices : ChoiceMap A N D
   /-- The frames of the agents that the agent has a model of. -/
   agents : A → Option (Frame A N D K)
-  /-- For each observed choice, the address in the enclosing frame of the choice that it was
-  observed to equal. -/
+  /-- For each observed or known choice, the address in the enclosing frame of the choice that it
+  equals. -/
   conds : Address A N → Option (Address A N)
   /-- The probability of the uncertain choices given the known ones. -/
   ll : Tensor K
@@ -96,8 +102,10 @@ structure Value (A : Type u) (N : Type v) (K : Type x) where
 
 variable {A : Type u} {N : Type v} {D : Type w} {K : Type x}
 
-/-- The **empty frame** has no choices and no agents, and its tensor has the value one. -/
-def Frame.empty [One K] : Frame A N D K := ⟨∅, fun _ ↦ none, fun _ ↦ none, .scalar 1⟩
+/-- The **empty frame** of an agent has no choices and no agents, and its tensor has the value
+one. -/
+def Frame.empty [One K] (name : Ref A) : Frame A N D K :=
+  ⟨name, ∅, fun _ ↦ none, fun _ ↦ none, .scalar 1⟩
 
 variable [DecidableEq A] [DecidableEq N]
 
@@ -130,11 +138,13 @@ instance (v : Value A N K) (Φ : Frame A N D K) : Decidable (v.IsKnown Φ) :=
   inferInstanceAs (Decidable (∀ a ∈ v.deps, _))
 
 /-- The **lift of an address** of the frame `Φα` of the agent `α` is the address of the same
-choice in the enclosing frame. A choice of `α`'s own is a choice of `α` there. Any other choice
-is the one that it was observed to equal, if it was observed. -/
-def Frame.liftAddr (α : A) (Φα : Frame A N D K) : Address A N → Option (Address A N)
-  | (.self, x) => some (.agent α, x)
-  | a => Φα.conds a
+choice in the enclosing frame. A choice that `α` observed or knows is the choice that it equals.
+Any other choice of `α`'s own is a choice of `α` there. -/
+def Frame.liftAddr (α : A) (Φα : Frame A N D K) (a : Address A N) : Option (Address A N) :=
+  (Φα.conds a).orElse fun _ ↦
+    match a with
+    | (.self, x) => some (.agent α, x)
+    | _ => none
 
 /-- The **lift of a value** of the frame `Φα` of the agent `α` is the same tensor with the
 addresses it depends on lifted to the enclosing frame. It is defined when each of them has a

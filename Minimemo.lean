@@ -10,3 +10,4 @@ public import Minimemo.Semantics
 public import Minimemo.Example.RSA
 public import Minimemo.Example.NaiveListener
 public import Minimemo.Example.PragmaticListener
+public import Minimemo.Example.Knows

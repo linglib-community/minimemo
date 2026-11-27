@@ -36,7 +36,8 @@ frame that its statement leaves.
 ## Implementation notes
 
 The definitions follow the semantics figure of the memo paper, one case for each rule, and each
-case names its rule. The figure writes the rules as equations with premises. Here they are
+case names its rule. The case for `knows`, which the figure does not have, follows memo: the
+agent's frame gets the choice as a known choice on the axis that it has in the current frame. The figure writes the rules as equations with premises. Here they are
 functions with values in `Option`, and the value is `none` when a premise fails. A frame that the
 figure writes as a tuple of a choice map, an agent map, a condition map and a tensor is a `Frame`.
 
@@ -121,11 +122,11 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
     run s₂ Φ' n'
   -- S-THINKS
   | .thinks α s => do
-    let (Φα, n') ← run s ((Φ.agents α).getD .empty) n
+    let (Φα, n') ← run s ((Φ.agents α).getD (.empty (.agent α))) n
     some ({ Φ with agents := Function.update Φ.agents α (some Φα) }, n')
   -- S-CHOOSES
   | .chooses α x X e => do
-    let Φα := (Φ.agents α).getD .empty
+    let Φα := (Φ.agents α).getD (.empty (.agent α))
     let Φα' : Frame A N D K := { Φα with choices := Φα.choices.insert (.self, x) ⟨X, n, true⟩ }
     let v ← eval e Φα' (n + 1)
     if v.IsKnown Φα' then
@@ -146,12 +147,40 @@ def run (s : Stmt A N D K) (Φ : Frame A N D K) (n : ℕ) : Option (Frame A N D 
       let Φβ' : Frame A N D K :=
         { Φβ with choices := Φβ.choices.insert (.self, x) ⟨c.dom, c.axis, true⟩ }
       let Φα' : Frame A N D K :=
-        { choices := χα
+        { name := Φα.name
+          choices := χα
           agents := Function.update Φα.agents β (some Φβ')
           conds := Function.update Φα.conds (.agent β, x) (some (γ, y))
           ll := ll / Tensor.sum (χα.uncertainAxes dom) ll }
       some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
     else none
+  -- S-KNOWS
+  | .knows α γ y => do
+    let c ← Φ.choices.lookup (γ, y)
+    let Φα := (Φ.agents α).getD (.empty (.agent α))
+    let c' : Choice D := { c with known := true }
+    match γ with
+    | .self =>
+      let Φα' : Frame A N D K :=
+        { Φα with
+          choices := Φα.choices.insert (.self, y) c'
+          conds := Function.update Φα.conds (.self, y) (some (.self, y)) }
+      some ({ Φ with
+        choices := Φ.choices.insert (.agent α, y) c
+        agents := Function.update Φ.agents α (some Φα')
+        conds := Function.update Φ.conds (.agent α, y) (some (Φ.name, y)) }, n)
+    | .agent β =>
+      let Φβ := (Φα.agents β).getD (.empty (.agent β))
+      let Φβ' : Frame A N D K :=
+        { Φβ with
+          choices := Φβ.choices.insert (.self, y) c'
+          conds := Function.update Φβ.conds (.self, y) (some (.agent β, y)) }
+      let Φα' : Frame A N D K :=
+        { Φα with
+          choices := Φα.choices.insert (.agent β, y) c'
+          agents := Function.update Φα.agents β (some Φβ')
+          conds := Function.update Φα.conds (.agent β, y) (some (.agent β, y)) }
+      some ({ Φ with agents := Function.update Φ.agents α (some Φα') }, n)
 termination_by structural s
 
 end
@@ -159,7 +188,7 @@ end
 /-- The frame in which a model starts: its axes are choices of the current agent, each known and
 on the axis of its position, and the tensor has the value one. -/
 def Model.frame (M : Model A N D K) : Frame A N D K :=
-  { Frame.empty with
+  { Frame.empty .self with
     choices := M.axes.zipIdx.foldr (fun p χ ↦ χ.insert (.self, p.1.1) ⟨p.1.2, p.2, true⟩) ∅ }
 
 /-- The tensor that a model **returns**: the tensor of its expression in the frame that its

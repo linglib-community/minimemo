@@ -1,7 +1,7 @@
 minimemo
 ========
 
-[memo](https://github.com/kach/memo) in Lean
+[memo](https://github.com/kach/memo) in [Lean 4](https://lean-lang.org)
 
 Installation:
 

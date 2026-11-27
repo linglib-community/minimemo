@@ -14,8 +14,8 @@ This file defines the statements, expressions and models of memo.
 
 A memo model describes agents who make choices and reason about each other. A statement says that
 an agent chooses a value from a domain, with probability proportional to an expression; that an
-agent observes a choice; or that an agent thinks, in which case the statements inside it happen in
-that agent's model of the world. An expression is a number computed from choices: a choice of the
+agent observes a choice; that an agent knows a choice; or that an agent thinks, in which case the
+statements inside it happen in that agent's model of the world. An expression is a number computed from choices: a choice of the
 current agent, a query for the value that another agent computes, or the expectation of a value
 that the current agent is uncertain of.
 
@@ -33,8 +33,8 @@ term `.thinks listener (.chooses speaker r R (.lit 1))`.
 
 ## Implementation notes
 
-The constructors follow the grammar of the memo paper. Three forms of that grammar are not
-constructors. A parameter of a model is an argument of the Lean function that builds the model. A
+The constructors follow the grammar of the memo paper, with the statement `knows` of memo added.
+Three forms of that grammar are not constructors. A parameter of a model is an argument of the Lean function that builds the model. A
 reference to another model and the cost of a model are primitive operators, which is how the paper
 gives their meaning. The expression `Pr[e]` of memo is `E[e]` for an `e` with values 0 and 1.
 
@@ -86,6 +86,9 @@ inductive Stmt (A : Type u) (N : Type v) (D : Type w) (K : Type x) : Type (max u
   /-- The statement `α: observes [β.x] is γ.y`: the agent `α` learns the choice `x` of `β`, whose
   value is the choice `y` of `γ`. -/
   | observes (α β : A) (x : N) (γ : Ref A) (y : N)
+  /-- The statement `α: knows(γ.y)`: the agent `α` knows the choice `y` of `γ`, without having
+  observed it. -/
+  | knows (α : A) (γ : Ref A) (y : N)
   /-- The statement `α: thinks[s]`: the statement `s` happens in the agent `α`'s model of the
   world. -/
   | thinks (α : A) (s : Stmt A N D K)

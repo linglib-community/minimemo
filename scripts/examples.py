@@ -64,6 +64,32 @@ def pragmatic[u: U, r: R]():
     return Pr[listener.r_pick == r]
 
 
+def speaker_knows[u: U, r: R]():
+    speaker: knows(r)
+    speaker: chooses(u_said in U, wpp=denotes(u_said, r))
+    return Pr[speaker.u_said == u]
+
+
+def nested_knows[u: U, r: R]():
+    listener: knows(r)
+    listener: thinks[
+        speaker: knows(r),
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r))
+    ]
+    listener: chooses(u_guess in U, wpp=Pr[speaker.u_said == u_guess])
+    return Pr[listener.u_guess == u]
+
+
+def knows_other[u: U, r: R]():
+    speaker: chooses(r_true in R, wpp=1)
+    listener: knows(speaker.r_true)
+    listener: thinks[
+        speaker: chooses(u_said in U, wpp=denotes(u_said, r_true))
+    ]
+    listener: chooses(u_guess in U, wpp=Pr[speaker.u_said == u_guess])
+    return Pr[listener.u_guess == u]
+
+
 if __name__ == "__main__":
-    for f in (naive, utterance_first, pragmatic):
+    for f in (naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other):
         print(model(f))
