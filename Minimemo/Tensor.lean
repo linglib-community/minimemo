@@ -31,6 +31,7 @@ operations on functions are the stretched operations on arrays.
 * `Memo.Tensor.swapAxes i k z`: the tensor `z` with the axes `i` and `k` exchanged.
 * `Memo.Tensor.rows z m n`: the entries of `z` on the first two axes, as a list of `m` rows of
   `n` numbers.
+* `Memo.Tensor.entries z sizes`: the entries of `z` on its first axes, in row-major order.
 
 ## Main results
 
@@ -47,6 +48,10 @@ structure Domain (K : Type*) where
   size : ℕ
   /-- The value at each position. -/
   val : ℕ → K
+
+/-- The first position at which a domain has the value `v`, or zero if it has none. -/
+def Domain.index {K : Type*} [DecidableEq K] (X : Domain K) (v : K) : ℕ :=
+  ((List.range X.size).find? fun j ↦ X.val j = v).getD 0
 
 /-- A **tensor** is a function of an assignment, which gives a position on every axis, with values
 in the numbers `K`. -/
@@ -84,6 +89,14 @@ def entry (z : Tensor K) (js : List ℕ) : K := z fun i ↦ js.getD i 0
 with two axes returns. -/
 def rows (z : Tensor K) (m n : ℕ) : List (List K) :=
   (List.range m).map fun i ↦ (List.range n).map fun j ↦ z.entry [i, j]
+
+/-- The lists of positions on axes of the given sizes, in row-major order. -/
+def indices : List ℕ → List (List ℕ)
+  | [] => [[]]
+  | m :: ms => (List.range m).flatMap fun i ↦ (indices ms).map (i :: ·)
+
+/-- The **entries** of a tensor on its first axes, of the given sizes, in row-major order. -/
+def entries (z : Tensor K) (sizes : List ℕ) : List K := (indices sizes).map z.entry
 
 variable (i k m : ℕ) (z : Tensor K) (σ : ℕ → ℕ)
 

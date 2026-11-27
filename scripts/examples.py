@@ -90,6 +90,9 @@ def knows_other[u: U, r: R]():
     return Pr[listener.u_guess == u]
 
 
+# A model comes after the models that it refers to.
+MODELS = [naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other]
+
 if __name__ == "__main__":
-    for f in (naive, utterance_first, pragmatic, speaker_knows, nested_knows, knows_other):
+    for f in MODELS:
         print(model(f))

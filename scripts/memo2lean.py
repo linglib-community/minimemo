@@ -5,8 +5,9 @@ memo paper and `knows`: `chooses`, `observes [..] is ..`, `thinks`, `knows`, cho
 `E[..]`, `Pr[..]`, `imagine`, arithmetic, and calls of foreign functions and of other models.
 
 The Lean file that receives the output supplies the types `Agent`, `Name` and `Dom`, the function
-`dom`, and a Lean function for each foreign function and each referenced model, under the same
-name. A Python name such as `u_said` becomes `uSaid`.
+`dom`, a Lean function for each foreign function under the same name, and for each referenced
+model `m` a function `mRef`. A Python name such as `u_said` becomes `uSaid`. `difftest.py` writes
+such a file.
 
 Usage, with memo installed:
 
@@ -27,9 +28,14 @@ class Unsupported(Exception):
     """The model uses a construct outside the grammar of the memo paper."""
 
 
+KEYWORDS = {"at", "by", "do", "else", "end", "from", "fun", "have", "if", "in", "let", "open",
+            "show", "then", "with"}
+
+
 def ident(name: str) -> str:
     head, *rest = name.split("_")
-    return head + "".join(word[:1].upper() + word[1:] for word in rest)
+    out = head + "".join(word[:1].upper() + word[1:] for word in rest)
+    return f"«{out}»" if out in KEYWORDS else out
 
 
 def lit(value) -> str:
@@ -43,9 +49,10 @@ def choice(who: str, name: str) -> str:
 
 
 def call(name: str, args: list[str]) -> str:
-    if len(args) not in (1, 2):
-        raise Unsupported(f"{name} with {len(args)} arguments")
-    return f".op{'₁₂'[len(args) - 1]} {ident(name)} " + " ".join(f"({a})" for a in args)
+    if len(args) in (1, 2):
+        return f".op{'₁₂'[len(args) - 1]} {ident(name)} " + " ".join(f"({a})" for a in args)
+    applied = " ".join(f"(v {i})" for i in range(len(args)))
+    return f".op (fun v ↦ {ident(name)} {applied}) ![{', '.join(args)}]"
 
 
 def expr(e) -> str:
@@ -63,7 +70,7 @@ def expr(e) -> str:
         case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
             return call(name, [expr(a) for a in args])
         case EMemo(name=name, args=[], ids=ids, kwargs=kwargs) if not kwargs:
-            return call(name, [choice(who, c) for (_, who, c) in ids])
+            return call(name + "_ref", [choice(who, c) for (_, who, c) in ids])
         case EImagine(do=do, then=then):
             return f".imagine ({stmts(do)}) ({expr(then)})"
     raise Unsupported(type(e).__name__)

@@ -26,6 +26,8 @@ frame that its statement leaves.
 * `Memo.run dom s Φ n`: the frame and the next free axis after the statement `s`, if it can run.
 * `Memo.Model.frame M`: the frame in which the model `M` starts, where its axes are known.
 * `Memo.infer dom M`: the tensor that the model `M` returns, if it returns one.
+* `Memo.Model.ref dom M vs`: the value of a reference to the model `M` at the values `vs`.
+* `Memo.Model.entries dom M`: the entries of the array that `M` returns, in row-major order.
 
 ## Main results
 
@@ -195,6 +197,15 @@ def Model.frame (M : Model A N D K) : Frame A N D K :=
 statement leaves, when that value is known there. -/
 def infer (M : Model A N D K) : Option (Tensor K) :=
   (eval dom (.imagine M.body M.ret) M.frame M.axes.length).map Value.tensor
+
+/-- The value of a **reference** to a model at given values of its axes: the entry of the array of
+the model at the positions of those values, or zero if the model returns no array. -/
+def Model.ref [DecidableEq K] (M : Model A N D K) (vs : List K) : K :=
+  ((infer dom M).getD 0).entry (List.zipWith (fun p v ↦ (dom p.2).index v) M.axes vs)
+
+/-- The entries of the array of a model, in row-major order. -/
+def Model.entries (M : Model A N D K) : Option (List K) :=
+  (infer dom M).map (·.entries (M.axes.map fun p ↦ (dom p.2).size))
 
 variable (Φ : Frame A N D K) (n : ℕ)
 
