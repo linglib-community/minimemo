@@ -7,7 +7,9 @@ module
 
 public import Mathlib.Algebra.BigOperators.Field
 public import Mathlib.Data.Finset.Update
+public import Mathlib.Data.Fintype.BigOperators
 public import Mathlib.Data.Fintype.Pi
+public import Mathlib.Data.Fintype.Prod
 
 /-!
 # Beliefs over a family of choices
@@ -35,11 +37,14 @@ expectation is the sum, over the uncertain choices, of a factor times the factor
 * `Memo.Core.Belief.IsNormalized b`: at every assignment, the factor of `b` sums to one or to zero
   over the uncertain choices.
 
-## TODO
+## Main results
 
-A choice with a nonnegative weight and an observation each take a normalized belief to a
-normalized belief, when the factor of the belief does not depend on the new choice. These are not
-proved here.
+* `Memo.Core.Factor.sumOver_union`: the sum over a union of two disjoint sets of choices is the
+  sum over one of the sum over the other.
+* `Memo.Core.Belief.observes_isNormalized`: the belief after an observation is normalized.
+* `Memo.Core.Belief.IsNormalized.chooses`: the belief after a choice is normalized, if the belief
+  before it is, its factor does not depend on the new choice, and the weight has a nonzero sum
+  over that choice.
 -/
 
 @[expose] public section
@@ -57,6 +62,26 @@ variable {X K} [∀ i, Fintype (X i)] [Semifield K]
 with the given one off that set. -/
 def Factor.sumOver (s : Finset ι) (f : Factor X K) : Factor X K :=
   fun σ ↦ ∑ τ : ∀ i : s, X i, f (Function.updateFinset σ s τ)
+
+omit [∀ i, Fintype (X i)] in
+theorem Function.updateFinset_updateFinset_self (σ : ∀ i, X i) (s : Finset ι)
+    (τ τ' : ∀ i : s, X i) :
+    Function.updateFinset (Function.updateFinset σ s τ) s τ' = Function.updateFinset σ s τ' := by
+  funext j
+  by_cases h : j ∈ s <;> simp [Function.updateFinset, h]
+
+/-- The sum of a factor over a set of choices does not depend on the values of those choices. -/
+theorem Factor.sumOver_updateFinset (s : Finset ι) (f : Factor X K) (σ : ∀ i, X i)
+    (τ : ∀ i : s, X i) : f.sumOver s (Function.updateFinset σ s τ) = f.sumOver s σ := by
+  simp only [Factor.sumOver, Function.updateFinset_updateFinset_self]
+
+/-- The sum over a union of two disjoint sets of choices is the sum over one of the sum over the
+other. -/
+theorem Factor.sumOver_union {s t : Finset ι} (hst : Disjoint s t) (f : Factor X K) :
+    f.sumOver (s ∪ t) = (f.sumOver t).sumOver s := by
+  funext σ
+  simp only [Factor.sumOver, Function.updateFinset_updateFinset hst]
+  rw [← (Equiv.piFinsetUnion X hst).sum_comp, Fintype.sum_prod_type]
 
 variable (X K) in
 /-- A **belief** is a set of choices that an agent is uncertain of, with a factor: the probability
@@ -89,6 +114,41 @@ def observes (b : Belief X K) (i : ι) : Belief X K where
 /-- The **expectation** of a factor in a belief is the sum, over the uncertain choices, of the
 factor times the factor of the belief. -/
 def expect (b : Belief X K) (e : Factor X K) : Factor X K := (e * b.weight).sumOver b.uncertain
+
+/-- The belief after an observation is normalized. -/
+theorem observes_isNormalized (b : Belief X K) (i : ι) : (b.observes i).IsNormalized := by
+  intro σ
+  have h : ∀ τ : ∀ j : (b.uncertain.erase i), X j,
+      b.weight.sumOver (b.uncertain.erase i) (Function.updateFinset σ _ τ) =
+        b.weight.sumOver (b.uncertain.erase i) σ := fun τ ↦ Factor.sumOver_updateFinset _ _ _ _
+  simp only [observes, Factor.sumOver, Pi.div_apply] at h ⊢
+  simp only [h, ← Finset.sum_div]
+  by_cases h0 : (∑ τ : ∀ j : (b.uncertain.erase i), X j,
+      b.weight (Function.updateFinset σ _ τ)) = 0
+  · exact .inr (by rw [h0, div_zero])
+  · exact .inl (div_self h0)
+
+/-- The belief after a choice is normalized, if the belief before it is, its factor does not
+depend on the new choice, and the weight has a nonzero sum over that choice. -/
+theorem IsNormalized.chooses {b : Belief X K} {i : ι} {w : Factor X K} (hb : b.IsNormalized)
+    (hi : i ∉ b.uncertain)
+    (hbi : ∀ σ (τ : ∀ j : ({i} : Finset ι), X j),
+      b.weight (Function.updateFinset σ {i} τ) = b.weight σ)
+    (hw : ∀ σ, w.sumOver {i} σ ≠ 0) : (b.chooses i w).IsNormalized := by
+  have inner : (b.weight * (w / w.sumOver {i})).sumOver {i} = b.weight := by
+    funext σ
+    have hZ : ∀ τ : ∀ j : ({i} : Finset ι), X j,
+        w.sumOver {i} (Function.updateFinset σ {i} τ) = w.sumOver {i} σ :=
+      fun τ ↦ Factor.sumOver_updateFinset _ _ _ _
+    have h0 := hw σ
+    simp only [Factor.sumOver, Pi.mul_apply, Pi.div_apply] at hZ h0 ⊢
+    simp only [hbi, hZ, ← Finset.mul_sum, ← Finset.sum_div]
+    rw [div_self h0, mul_one]
+  intro σ
+  have hd : Disjoint b.uncertain {i} := Finset.disjoint_singleton_right.2 hi
+  have hu : insert i b.uncertain = b.uncertain ∪ {i} := by rw [Finset.union_comm, Finset.insert_eq]
+  simp only [Belief.chooses, hu, Factor.sumOver_union hd, inner]
+  exact hb σ
 
 end Belief
 
