@@ -15,10 +15,10 @@ public import Minimemo.Tensor
 This file translates a memo model to a program on tables.
 
 The translation reads the statements in order and keeps, for every agent's model of the world, a
-scope: the choices that the agent is aware of, each with its number and whether the agent is
-certain of it, and the scopes of the agents that this agent has a model of. It computes no number.
-It checks that every expression is used where the agent can compute it, and it writes the steps
-of the program.
+scope: the number of the table that is the agent's belief, the choices that the agent is aware of,
+each with its number and whether the agent is certain of it, and the scopes of the agents that
+this agent has a model of. It computes no number. It checks that every expression is used where
+the agent can compute it, and it writes the steps of the program.
 
 A choice that an agent imagines has its own number. When the agent observes it, the agent becomes
 certain of that choice, and the scope records a link from it to the choice that was observed. A
@@ -27,21 +27,13 @@ through these links.
 
 ## Main definitions
 
-* `Memo.Core.Scope A N D`: the choices and agents that a mind is aware of.
-* `Memo.Core.Expr.term dom e S`: the term of the expression `e` in the scope `S`, with the choices
-  that it depends on.
+* `Memo.Core.Scope A N D`: the belief, choices and agents that a mind is aware of.
+* `Memo.Core.Expr.term dom e S g`: the term of the expression `e` in the scope `S`, with the
+  choices that it depends on.
 * `Memo.Core.Stmt.steps dom s S g`: the scope after the statement `s`, with its steps added to
   `g`.
-* `Memo.Core.Model.program dom M`: the program of the model `M`.
+* `Memo.Core.Model.program dom M`: the program of the model `M`, if memo accepts the model.
 * `Memo.Core.Model.entries dom M`: the entries of the array of `M`, in row-major order.
-* `Memo.Core.Model.covered M`: the model uses only the statements and expressions that the
-  translation has.
-
-## Implementation notes
-
-The translation has every statement but `snapshots_self_as` and `forgets_about`, and every
-expression but `imagine`. On a model with one of these the program is `none`, as it is for a model that memo does not accept; `Memo.Core.Model.covered` tells the two
-apart.
 -/
 
 @[expose] public section
@@ -50,8 +42,9 @@ universe u
 
 namespace Memo.Core
 
-/-- A choice in a scope has a number, a domain, and a flag that says whether the agent of the
-scope is certain of its value. -/
+/-- A choice in a scope has a number, a domain, a flag that says whether the agent of the scope is
+certain of its value, and a flag that says whether the agent has the choice from outside, by
+knowing or observing it. -/
 structure Entry (D : Type u) : Type u where
   /-- The number of the choice. -/
   index : ℕ
@@ -59,13 +52,15 @@ structure Entry (D : Type u) : Type u where
   dom : D
   /-- Whether the agent is certain of the value. -/
   certain : Bool
+  /-- Whether the agent has the choice from outside. -/
+  given : Bool := false
 
-/-- A **scope** is what a mind is aware of: its number, its choices by the agent who makes them
-and their name, the scopes of the agents that it has a model of, and a link from each choice that
-it has observed to the choice that it equals outside. -/
+/-- A **scope** is what a mind is aware of: the table that is its belief, its choices by the agent
+who makes them and their name, the scopes of the agents that it has a model of, and a link from
+each choice that it has observed to the choice that it equals outside. -/
 structure Scope (A N D : Type u) : Type u where
-  /-- The number of the mind. -/
-  mind : ℕ
+  /-- The number of the table that is the belief of the mind. -/
+  table : ℕ
   /-- The choices that the mind is aware of. -/
   entries : List ((Ref A × N) × Entry D)
   /-- The scopes of the agents that the mind has a model of. -/
@@ -73,14 +68,16 @@ structure Scope (A N D : Type u) : Type u where
   /-- The observed choices, each with the choice outside that it equals. -/
   links : List (ℕ × ℕ)
 
-/-- The next free number of a choice, the next free number of a mind, and the steps so far. -/
+/-- The next free number of a choice and the steps so far. -/
 structure Gen (K : Type u) : Type u where
   /-- The next free number of a choice. -/
   next : ℕ
-  /-- The next free number of a mind. -/
-  minds : ℕ
   /-- The steps so far. -/
   steps : Array (Step K)
+
+/-- The steps with one more, and the number of the table that it adds. -/
+def Gen.push {K : Type u} (g : Gen K) (s : Step K) : Gen K × ℕ :=
+  ({ g with steps := g.steps.push s }, g.steps.size + 1)
 
 variable {A N D K : Type u} [DecidableEq A] [DecidableEq N] [DecidableEq D]
 
@@ -99,11 +96,17 @@ def uncertain (dom : D → Domain K) (S : Scope A N D) : List (ℕ × ℕ) :=
 def insert (S : Scope A N D) (a : Ref A × N) (e : Entry D) : Scope A N D :=
   { S with entries := (a, e) :: S.entries.filter fun p ↦ p.1 ≠ a }
 
-/-- The scope of the agent `α` in a scope, or a new empty one with the next free number. -/
-def agent (S : Scope A N D) (α : A) (g : Gen K) : Scope A N D × Gen K :=
-  match S.agents α with
-  | some Sα => (Sα, g)
-  | none => (⟨g.minds, [], fun _ ↦ none, []⟩, { g with minds := g.minds + 1 })
+/-- The scope without the choices at the addresses in `as`. -/
+def erase (S : Scope A N D) (as : List (Ref A × N)) : Scope A N D :=
+  { S with entries := S.entries.filter fun p ↦ p.1 ∉ as }
+
+/-- The scope of the agent `α` in a scope, or the empty scope, whose belief is the table `0`. -/
+def agent (S : Scope A N D) (α : A) : Scope A N D :=
+  (S.agents α).getD ⟨0, [], fun _ ↦ none, []⟩
+
+/-- The scope in which the scope of the agent `α` is `Sα`. -/
+def setAgent (S : Scope A N D) (α : A) (Sα : Scope A N D) : Scope A N D :=
+  { S with agents := Function.update S.agents α (some Sα) }
 
 /-- The choice that a choice of the scope equals outside. -/
 def link (S : Scope A N D) (i : ℕ) : ℕ := (S.links.lookup i).getD i
@@ -116,26 +119,34 @@ def allSome {k : ℕ} {β : Type*} (o : Fin k → Option β) : Option (Fin k →
 
 variable (dom : D → Domain K)
 
+mutual
+
 /-- The **term of an expression** in a scope, with the choices that it depends on. -/
-def Expr.term (e : Expr A N D K) (S : Scope A N D) : Option (Term K × List ℕ) :=
+def Expr.term (e : Expr A N D K) (S : Scope A N D) (g : Gen K) : Option (Term K × List ℕ) :=
   match e with
   | .lit r => some (.lit r, [])
   | .op f es =>
-    (allSome fun i ↦ Expr.term (es i) S).map fun ts ↦
+    (allSome fun i ↦ Expr.term (es i) S g).map fun ts ↦
       (.op f fun i ↦ (ts i).1, ((List.finRange _).flatMap fun i ↦ (ts i).2).dedup)
   | .choice x =>
     (S.entries.lookup (.self, x)).map fun c ↦
       (.val c.index (dom c.dom).size (dom c.dom).val, [c.index])
   | .query α e => do
     let Sα ← S.agents α
-    let (t, deps) ← Expr.term e Sα
+    let (t, deps) ← Expr.term e Sα g
     if deps.all (· ∈ Sα.certain) then some (.rename Sα.links t, (deps.map Sα.link).dedup)
     else none
   | .expect e => do
-    let (t, deps) ← Expr.term e S
+    let (t, deps) ← Expr.term e S g
     if deps.all (· ∈ S.certain) then some (t, deps)
-    else some (.expect S.mind (S.uncertain dom) t, S.certain)
-  | .imagine _ _ => none
+    else some (.expect S.table (S.uncertain dom) t, S.certain)
+  | .imagine s e => do
+    let (S', g') ← Stmt.steps s S g
+    let (t, deps) ← Expr.term e S' g'
+    if deps.all fun i ↦ i ∈ S'.certain ∧ S.entries.any (·.2.index == i) then
+      some ((g'.steps.extract g.steps.size g'.steps.size).foldr Term.after t, deps)
+    else none
+termination_by structural e
 
 /-- The scope after a **statement**, with the steps of the statement added. -/
 def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope A N D × Gen K) :=
@@ -145,66 +156,39 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     let (S', g') ← Stmt.steps s₁ S g
     Stmt.steps s₂ S' g'
   | .thinks α s => do
-    let (Sα, g) := S.agent α g
-    let (Sα', g') ← Stmt.steps s Sα g
-    some ({ S with agents := Function.update S.agents α (some Sα') }, g')
+    let (Sα, g') ← Stmt.steps s (S.agent α) g
+    some (S.setAgent α Sα, g')
   | .chooses α x X e => do
-    let (Sα, g) := S.agent α g
-    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true⟩
-    let (t, deps) ← Expr.term dom e Sα'
+    let Sα := S.agent α
+    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true, false⟩
+    let (t, deps) ← Expr.term e Sα' { g with next := g.next + 1 }
     if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
-      some ({ S.insert (.agent α, x) ⟨g.next, X, false⟩ with
-          agents := Function.update S.agents α (some Sα') },
-        { g with
-          next := g.next + 1
-          steps := g.steps.push (.chooses S.mind [(g.next, (dom X).size)] (.rename Sα'.links t)) })
+      let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)] (.rename Sα'.links t))
+      some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
+        { g' with next := g.next + 1 })
     else none
   | .choosesMax α x X e => do
-    let (Sα, g) := S.agent α g
-    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true⟩
-    let (t, deps) ← Expr.term dom e Sα'
+    let Sα := S.agent α
+    let Sα' := Sα.insert (.self, x) ⟨g.next, X, true, false⟩
+    let (t, deps) ← Expr.term e Sα' { g with next := g.next + 1 }
     if deps.all (· ∈ Sα'.certain) ∧ (Sα.entries.lookup (.self, x)).isNone then
-      some ({ S.insert (.agent α, x) ⟨g.next, X, false⟩ with
-          agents := Function.update S.agents α (some Sα') },
-        { g with
-          next := g.next + 1
-          steps := g.steps.push (.chooses S.mind [(g.next, (dom X).size)]
-            (.rename Sα'.links (.best g.next (dom X).size t))) })
+      let (g', w) := g.push (.chooses S.table [(g.next, (dom X).size)]
+        (.rename Sα'.links (.best g.next (dom X).size t)))
+      some ({ (S.insert (.agent α, x) ⟨g.next, X, false, false⟩).setAgent α Sα' with table := w },
+        { g' with next := g.next + 1 })
     else none
   | .choosesMany α xs e => do
-    let (Sα, g) := S.agent α g
-    let Sα' := xs.zipIdx.foldl (fun S p ↦ S.insert (.self, p.1.1) ⟨g.next + p.2, p.1.2, true⟩) Sα
-    let (t, deps) ← Expr.term dom e Sα'
+    let Sα := S.agent α
+    let Sα' := xs.zipIdx.foldl
+      (fun S p ↦ S.insert (.self, p.1.1) ⟨g.next + p.2, p.1.2, true, false⟩) Sα
+    let (t, deps) ← Expr.term e Sα' { g with next := g.next + xs.length }
     if deps.all (· ∈ Sα'.certain) ∧ xs.all fun p ↦ (Sα.entries.lookup (.self, p.1)).isNone then
       let S' := xs.zipIdx.foldl
-        (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false⟩) S
-      some ({ S' with agents := Function.update S.agents α (some Sα') },
-        { g with
-          next := g.next + xs.length
-          steps := g.steps.push (.chooses S.mind
-            (xs.zipIdx.map fun p ↦ (g.next + p.2, (dom p.1.2).size)) (.rename Sα'.links t)) })
+        (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
+      let (g', w) := g.push (.chooses S.table
+        (xs.zipIdx.map fun p ↦ (g.next + p.2, (dom p.1.2).size)) (.rename Sα'.links t))
+      some ({ S'.setAgent α Sα' with table := w }, { g' with next := g.next + xs.length })
     else none
-  | .observesEvent α e => do
-    let (Sα, g) := S.agent α g
-    let (t, _) ← Expr.term dom e Sα
-    some ({ S with agents := Function.update S.agents α (some Sα) },
-      { g with
-        steps := (g.steps.push (.weighs Sα.mind t)).push (.observes Sα.mind (Sα.uncertain dom)) })
-  | .knows α γ y => do
-    let c ← S.entries.lookup (γ, y)
-    let (Sα, g) := S.agent α g
-    match γ with
-    | .self =>
-      let Sα' := Sα.insert (.self, y) { c with certain := true }
-      some ({ S.insert (.agent α, y) c with
-        agents := Function.update S.agents α (some Sα') }, g)
-    | .agent β =>
-      let (Sβ, g) := Sα.agent β g
-      let Sβ' := Sβ.insert (.self, y) { c with certain := true }
-      let Sα' : Scope A N D :=
-        { Sα.insert (.agent β, y) { c with certain := true } with
-          agents := Function.update Sα.agents β (some Sβ') }
-      some ({ S with agents := Function.update S.agents α (some Sα') }, g)
   | .observes α β x γ y => do
     let Sα ← S.agents α
     let c ← S.entries.lookup (γ, y)
@@ -212,51 +196,62 @@ def Stmt.steps (s : Stmt A N D K) (S : Scope A N D) (g : Gen K) : Option (Scope 
     let _ ← Sα.agents β
     if c.dom = cα.dom ∧ cα.certain = false then
       let Sα' : Scope A N D :=
-        { Sα.insert (.agent β, x) { cα with certain := true } with
+        { Sα.insert (.agent β, x) { cα with certain := true, given := true } with
           links := (cα.index, c.index) :: Sα.links }
-      some ({ S with agents := Function.update S.agents α (some Sα') },
-        { g with steps := g.steps.push (.observes Sα.mind (Sα'.uncertain dom)) })
+      let (g', w) := g.push (.observes Sα.table (Sα'.uncertain dom))
+      some (S.setAgent α { Sα' with table := w }, g')
     else none
-  | .snapshot .. | .forgets .. => none
+  | .observesEvent α e => do
+    let Sα := S.agent α
+    let (t, _) ← Expr.term e Sα g
+    let (g', w) := g.push (.weighs Sα.table t)
+    let (g'', w') := g'.push (.observes w (Sα.uncertain dom))
+    some (S.setAgent α { Sα with table := w' }, g'')
+  | .knows α γ y => do
+    let c ← S.entries.lookup (γ, y)
+    let Sα := S.agent α
+    let c' : Entry D := { c with certain := true, given := true }
+    match γ with
+    | .self => some ((S.insert (.agent α, y) c).setAgent α (Sα.insert (.self, y) c'), g)
+    | .agent β =>
+      some (S.setAgent α
+        ((Sα.insert (.agent β, y) c').setAgent β ((Sα.agent β).insert (.self, y) c')), g)
+  | .snapshot α β =>
+    let Sα := S.agent α
+    let Sβ : Scope A N D :=
+      { Sα with entries := Sα.entries.map fun p ↦ (p.1, { p.2 with given := true }), links := [] }
+    let Sα' := Sα.entries.foldl
+      (fun S p ↦ if p.1.1 = .self then S.insert (.agent β, p.1.2) { p.2 with given := true }
+        else S) Sα
+    some (S.setAgent α (Sα'.setAgent β Sβ), g)
+  | .forgets α xs => do
+    let Sα ← S.agents α
+    if xs.all fun x ↦ (Sα.entries.lookup (.self, x)).any (!·.given) ∧
+        (S.entries.lookup (.agent α, x)).isSome then
+      let over := (xs.filterMap fun x ↦
+        (S.entries.lookup (.agent α, x)).map fun c ↦ (c.index, (dom c.dom).size)).dedup
+      let (g', w) := g.push (.forgets S.table over)
+      some ({ (S.erase (xs.map fun x ↦ (.agent α, x))).setAgent α
+          (Sα.erase (xs.map fun x ↦ (.self, x))) with table := w }, g')
+    else none
+termination_by structural s
 
-/-- The **program of a model**. The mind `0` is the model's own, the axes of the model are its
-first choices, and it is certain of them. The array may depend on the axes only. -/
+end
+
+/-- The **program of a model**. The axes of the model are its first choices, and the model is
+certain of them. The array may depend on the axes only. -/
 def Model.program (M : Model A N D K) : Option (Program K) := do
   let k := M.axes.length
   let S₀ : Scope A N D :=
-    ⟨0, M.axes.zipIdx.map fun p ↦ ((.self, p.1.1), ⟨p.2, p.1.2, true⟩), fun _ ↦ none, []⟩
-  let (S, g) ← Stmt.steps dom M.body S₀ ⟨k, 1, #[]⟩
-  let (t, deps) ← Expr.term dom M.ret S
+    ⟨0, M.axes.zipIdx.map fun p ↦ ((.self, p.1.1), ⟨p.2, p.1.2, true, false⟩), fun _ ↦ none, []⟩
+  let (S, g) ← Stmt.steps dom M.body S₀ ⟨k, #[]⟩
+  let (t, deps) ← Expr.term dom M.ret S g
   if deps.all (· < k) then
-    some ⟨g.minds, g.steps.toList, t, M.axes.zipIdx.map fun p ↦ (p.2, (dom p.1.2).size)⟩
+    some ⟨g.steps.toList, t, M.axes.zipIdx.map fun p ↦ (p.2, (dom p.1.2).size)⟩
   else none
 
 /-- The entries of the array of a model, in row-major order. -/
 def Model.entries [Semifield K] [LinearOrder K] (M : Model A N D K) : Option (List K) :=
   (Model.program dom M).map Program.entries
-
-mutual
-
-/-- The expression uses only the forms that the translation has. -/
-def Expr.covered : Expr A N D K → Bool
-  | .lit _ | .choice _ => true
-  | .op _ es => (List.finRange _).all fun i ↦ Expr.covered (es i)
-  | .query _ e | .expect e => Expr.covered e
-  | .imagine _ _ => false
-
-end
-
-/-- The statement uses only the forms that the translation has. -/
-def Stmt.covered : Stmt A N D K → Bool
-  | .pass => true
-  | .seq s₁ s₂ => Stmt.covered s₁ && Stmt.covered s₂
-  | .thinks _ s => Stmt.covered s
-  | .chooses _ _ _ e | .choosesMax _ _ _ e | .choosesMany _ _ e | .observesEvent _ e =>
-    Expr.covered e
-  | .observes .. | .knows .. => true
-  | .snapshot .. | .forgets .. => false
-
-/-- The model uses only the statements and expressions that the translation has. -/
-def Model.covered (M : Model A N D K) : Bool := Stmt.covered M.body && Expr.covered M.ret
 
 end Memo.Core
