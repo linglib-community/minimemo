@@ -50,6 +50,13 @@ CONTINUATION: list = []
 GOALS: dict[str, dict] = {}
 DOMAIN: dict[str, str] = {}
 SIGNATURES: dict[str, tuple[list, list]] = {}  # the parameters and defaults of each model
+RETURNS: dict[str, int] = {}  # how many values each model returns
+
+
+def def_names(name: str, count: int | None = None) -> list[str]:
+    """The names of the Lean models of a memo model: one for each value that it returns."""
+    count = RETURNS.get(name, 1) if count is None else count
+    return [name] if count == 1 else [f"{name}_r{k}" for k in range(count)]
 EXTRA_AGENTS: list[str] = []
 EXTRA_NAMES: list[str] = []
 
@@ -302,8 +309,12 @@ def expr(e) -> str:
         case EFFI():
             name, args = effective(e)
             return call(ident(name), [expr(a) for a in args])
-        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs, which_retval=None):
-            head = ident(name) + "".join(f" {a}" for a in reference_args(name, args, kwargs))
+        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs, which_retval=which):
+            count = RETURNS.get(name, 1)
+            if (which is None) != (count == 1) or (which or 0) >= count:
+                raise Unsupported("a reference to a value that the model does not return")
+            head = ident(def_names(name)[which or 0]) + "".join(
+                f" {a}" for a in reference_args(name, args, kwargs))
             return f".ref (.{head}) ![{', '.join(choice(who, c) for (_, who, c) in ids)}]"
         case EImagine(do=do, then=then):
             saved = PREFIX[:], CONTINUATION[:]
@@ -395,8 +406,6 @@ def model(f, name: str | None = None) -> str:
     pctxt, ss, rets = parse_memo(f)
     params = " ".join(map(ident, pctxt.static_parameters))
     binder = f" ({params} : ℚ)" if params else ""
-    if len(rets) != 1:
-        raise Unsupported("a model with several return values")
     PREFIX.clear(); CONTINUATION.clear(); GOALS.clear()
     for n in nodes([ss, rets]):
         match n:
@@ -406,5 +415,8 @@ def model(f, name: str | None = None) -> str:
                 DOMAIN.update(cs)
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
-    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"
-            f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(rets[0])}\n")
+    PREFIX.clear(); CONTINUATION.clear()
+    return "\n".join(
+        f"def {ident(n)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"
+        f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(ret)}\n"
+        for n, ret in zip(def_names(name or f.__name__, len(rets)), rets))

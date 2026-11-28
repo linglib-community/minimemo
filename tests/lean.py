@@ -159,6 +159,8 @@ def source(raw, env, args_of, shown=None):
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
     memo2lean.SIGNATURES = {name: (list(p[0].static_parameters), list(p[0].static_defaults))
                             for name, p in parsed.items()}
+    memo2lean.RETURNS = {name: len(p[2]) for name, p in parsed.items()}
+    each = memo2lean.def_names
 
     # the models, translated: the translation of `wants` adds agents and names of its own
     memo2lean.EXTRA_AGENTS.clear(); memo2lean.EXTRA_NAMES.clear()
@@ -178,7 +180,8 @@ def source(raw, env, args_of, shown=None):
     # the outside functions of the models, and an index for each model with its parameters
     fns = [f"  | {ident(name)} : Fn {len(slots)}" for name, slots in calls.items()]
     fns += [f"  | {name} : Fn {memo2lean.OUTSIDE_ARITY[name]}" for name in outside]
-    indices = [f"  | {ident(name)}{''.join(f' ({p} : ℚ)' for p in params(name))}" for name in parsed]
+    indices = [f"  | {ident(n)}{''.join(f' ({p} : ℚ)' for p in params(name))}"
+               for name in parsed for n in each(name)]
     lean = ["import Minimemo", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
             f"inductive Agent{bars(map(ident, agents))} deriving DecidableEq, Repr",
@@ -216,17 +219,19 @@ def source(raw, env, args_of, shown=None):
         lean.append(f"def call : {{k : ℕ}} → Fn k → (Fin k → {K}) → {K} := fun f _ ↦ nomatch f")
     # the models are a family in which a reference names a model with its parameters, as in memo
     lean += ["", "def fam : Family Agent Name Dom Fn Ix Ix where", "  model"]
-    lean += [f"    | .{applied(name, params(name))} => {applied(name, params(name))}" for name in parsed]
+    lean += [f"    | .{applied(n, params(name))} => {applied(n, params(name))}"
+             for name in parsed for n in each(name)]
     lean += ["  target _ r := r", "",
              f"def interp (p : Ix) : Interp Dom (Refs Ix Fn) {K} :=",
              f"  {of} dom (fam.call dom call (fam.entries {of} dom call {DEPTH}) p)", ""]
     given = {f.__name__: [rat(a) for a in args_of.get(f.__name__, ())] for f in shown}
-    for f in shown:
-        m = applied(f.__name__, given[f.__name__])
+    shown_names = [(f.__name__, n) for f in shown for n in each(f.__name__)]
+    for name, n in shown_names:
+        m = applied(n, given[name])
         lean.append(f"#eval Model.entries (interp (.{m})) ({m})")
     lean.append('#eval "errors"')
-    for f in shown:  # why each model is not accepted, if it is not
-        lean.append(f"#eval Model.error ({applied(f.__name__, given[f.__name__])})")
+    for name, n in shown_names:  # why each model is not accepted, if it is not
+        lean.append(f"#eval Model.error ({applied(n, given[name])})")
     sizes = {f.__name__: [len(values[d]) for d in axes_of(f.__name__)] for f in shown}
     return "\n".join(lean) + "\n", sizes
 
@@ -259,6 +264,24 @@ def agree(got, out, sizes) -> bool:
         abs(g - w) < 1e-4 * max(1, abs(w)) for g, w in zip(got, want))
 
 
+def verdict(name, results, reasons, out, sizes) -> tuple[bool, str]:
+    """Whether minimemo gives what memo gives for a model: the next results are its arrays, one for
+    each value that it returns, and `out` is what memo returns, or `None` if memo rejects it."""
+    count = memo2lean.RETURNS.get(name, 1)
+    gots = [next(results) for _ in range(count)]
+    why = [next(reasons) for _ in range(count)][0]
+    if out is None or None in gots:
+        rejected = "minimemo rejects it" if None in gots else "memo rejects it"
+        return out is None and all(g is None for g in gots), f"only {rejected}: {why}"
+    outs = list(out) if count > 1 else [out]
+    for got, o in zip(gots, outs, strict=True):
+        if not agree(got, o, sizes[name]):
+            want = numpy.broadcast_to(numpy.asarray(o), sizes[name]).ravel()
+            return False, (f"memo: {[round(float(w), 5) for w in want]}\n"
+                           f"lean: {[round(g, 5) for g in got]}")
+    return True, ""
+
+
 def compare(module) -> dict:
     """For each model of a module, whether memo and minimemo give the same array or both reject
     the model, with what differs if they do not."""
@@ -269,19 +292,13 @@ def compare(module) -> dict:
     scope = vars(module)
     scope["memo"] = memo
     verdicts = {}
-    for f, got, reason in zip(raw, results, reasons, strict=True):
+    results, reasons = iter(results), iter(reasons)
+    for f in raw:
         # memo compiles a model in the scope of its caller, which has to be the module of the model
         try:
             exec(f"{f.__name__} = memo({f.__name__})", scope)
             out = scope[f.__name__](*args_of.get(f.__name__, ()))
         except MemoError:
             out = None
-        if got is None or out is None:
-            rejected = "minimemo rejects it" if got is None else "memo rejects it"
-            verdicts[f.__name__] = (got is None and out is None, f"only {rejected}: {reason}")
-            continue
-        want = numpy.broadcast_to(numpy.asarray(out), sizes[f.__name__]).ravel()
-        verdicts[f.__name__] = (agree(got, out, sizes[f.__name__]),
-                                f"memo: {[round(float(w), 5) for w in want]}\n"
-                                f"lean: {[round(g, 5) for g in got]}")
+        verdicts[f.__name__] = verdict(f.__name__, results, reasons, out, sizes)
     return verdicts

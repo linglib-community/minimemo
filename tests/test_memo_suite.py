@@ -20,7 +20,7 @@ from memo import codegen
 from memo.core import EMemo, MemoError
 from memo.parse import parse_memo
 
-from lean import ROOT, agree, nodes, run, source
+from lean import ROOT, nodes, run, source, verdict
 from memo2lean import Unsupported
 
 
@@ -111,12 +111,9 @@ def check(i: int, t: Test) -> tuple[str, str]:
         return "skipped", "too slow"
     except RuntimeError as e:
         return "differs", "Lean does not accept the file: " + str(e).strip().split("\n")[0][:80]
-    got, reason = results[0], reasons[0]
-    if t.outcome == "ce":
-        return ("ok", f"rejected: {reason}") if got is None else ("differs", "memo rejects it")
-    if got is None:
-        return "differs", f"minimemo rejects it: {reason}"
-    return ("ok", "") if agree(got, t.out, sizes[name]) else ("differs", "the arrays differ")
+    ok, why = verdict(name, iter(results), iter(reasons),
+                      None if t.outcome == "ce" else t.out, sizes)
+    return ("ok" if ok else "differs"), why
 
 
 def collect() -> list[Test]:
