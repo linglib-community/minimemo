@@ -11,6 +11,8 @@ from textwrap import indent
 import contextlib
 import dataclasses
 
+import numpy
+
 from memo.core import (EChoice, EEntropy, EExpect, EFFI, EImagine, EInline, EKL, ELit, EMemo, EOp,
                        EPredict, EUtil,
                        EWith, Op, SChoose, SForAll, SForgetsAbout, SGuess, SKnows, SObserves,
@@ -51,6 +53,9 @@ GOALS: dict[str, dict] = {}
 DOMAIN: dict[str, str] = {}
 SIGNATURES: dict[str, tuple[list, list]] = {}  # the parameters and defaults of each model
 RETURNS: dict[str, int] = {}  # how many values each model returns
+EXOTIC: dict[str, set] = {}  # the parameters of each model that hold arrays
+EXOTIC_HERE: set = set()  # those of the model that is being translated
+BOUND_IDS: dict[str, int] = {}  # a number for each Python expression whose value is an array
 # The variant of memo that each model is written in, by the name of the model, and Lean's names.
 ROOT_VARIANT: dict[str, str] = {}
 VARIANTS = {"ADULT": "adult", "CHILD": "child", "NO_THINKS": "noThinks", "NO_KNOWS": "noKnows",
@@ -231,12 +236,34 @@ def static_test(e) -> str:
     return f"{static(e)} ≠ 0"  # a number is taken as true when it is not zero
 
 
+def bound(arg) -> str | None:
+    """What an argument of an outside function is fixed to, if it is not a number: the name of a
+    parameter that holds an array, or a Python expression in braces whose value is an array."""
+    match arg:
+        case ELit(value=str(name)) if name in EXOTIC_HERE:
+            return name
+        case EInline(val=val) if numpy.ndim(eval(val, dict(INLINE_ENV))) > 0:
+            return val
+    return None
+
+
 def effective(e) -> tuple[str, list]:
     """An outside function with its arguments in order. Arguments given by keyword follow the
-    others, and their keywords are part of the name: the function is a different one with them."""
-    if not e.kwargs:
-        return e.name, list(e.args)
-    return e.name + "__" + "_".join(e.kwargs), list(e.args) + list(e.kwargs.values())
+    others, and their keywords are part of the name: the function is a different one with them.
+    An argument that is an array is fixed, and the function is the one with it fixed."""
+    name = e.name if not e.kwargs else e.name + "__" + "_".join(e.kwargs)
+    args = list(e.args) + list(e.kwargs.values())
+    fixed = [(i, bound(a)) for i, a in enumerate(args) if bound(a) is not None]
+    for i, what in fixed:
+        key = what if what in EXOTIC_HERE else f"array{BOUND_IDS.setdefault(what, len(BOUND_IDS))}"
+        name += f"__at{i}_{key}"
+    return name, [a for a in args if bound(a) is None]
+
+
+def bindings(e) -> dict[int, str]:
+    """The arguments of an outside function that are fixed, by position, as `bound` gives them."""
+    args = list(e.args) + list(e.kwargs.values())
+    return {i: bound(a) for i, a in enumerate(args) if bound(a) is not None}
 
 
 def reference_args(name: str, args: list, kwargs: dict) -> list[str]:
@@ -247,8 +274,11 @@ def reference_args(name: str, args: list, kwargs: dict) -> list[str]:
             raise Unsupported("a reference by keyword to a model that is not a memo model")
         return [static(a) for a in args]
     params, defaults = SIGNATURES[name]
-    out = [static(a) for a in args]
+    exotic = EXOTIC.get(name, set())  # a parameter that holds an array is not passed on in Lean
+    out = [static(a) for param, a in zip(params, args) if param not in exotic]
     for param, default in list(zip(params, defaults))[len(args):]:
+        if param in exotic:
+            continue
         if param in kwargs:
             out.append(static(kwargs[param]))
         elif default is not None:
@@ -423,7 +453,8 @@ def stmts(ss) -> str:
 
 def model(f, name: str | None = None) -> str:
     pctxt, ss, rets = parse_memo(f)
-    params = " ".join(map(ident, pctxt.static_parameters))
+    EXOTIC_HERE.clear(); EXOTIC_HERE.update(pctxt.exotic_parameters)
+    params = " ".join(ident(p) for p in pctxt.static_parameters if p not in EXOTIC_HERE)
     binder = f" ({params} : ℚ)" if params else ""
     PREFIX.clear(); CONTINUATION.clear(); GOALS.clear()
     for n in nodes([ss, rets]):

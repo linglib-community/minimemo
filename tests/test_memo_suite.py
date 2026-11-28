@@ -29,7 +29,7 @@ from memo2lean import Rejected, Unsupported
 class Test:
     f: object        # the model, as a function
     known: dict      # the models defined before it, by name
-    module: object   # the module that holds the domains and the functions
+    env: dict        # the domains and the functions, as they were when the test was defined
     outcome: str     # what memo does: "pass", or "ce" (rejects the model)
     out: object      # the array that memo returns
     args: tuple      # the parameters
@@ -56,7 +56,7 @@ def memo_test(mod, expect="pass", item=None, *args, **kwargs):
         if "variant" in kwargs:
             memo2lean.ROOT_VARIANT[f.__name__] = kwargs["variant"].name
         if outcome == expect != "re":
-            tests.append(Test(f, dict(known), mod, outcome, out, args))
+            tests.append(Test(f, dict(known), dict(vars(mod)), outcome, out, args))
         known[f.__name__] = f
         return getattr(mod, f.__name__, None)
     return helper
@@ -98,7 +98,7 @@ def check(i: int, t: Test) -> tuple[str, str]:
     except MemoError:
         return "skipped", "not in memo's grammar"
     try:
-        env = vars(t.module)
+        env = t.env
         defaults = ctxt.static_defaults[len(t.args):]
         if None in defaults:
             raise Unsupported("a model that is given no parameters")

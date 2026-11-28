@@ -8,6 +8,7 @@ import subprocess
 import sys
 from fractions import Fraction
 
+import jax
 import numpy
 from memo import memo
 from memo.lib import Bool
@@ -19,7 +20,7 @@ from memo.parse import parse_memo
 import enum
 
 import memo2lean
-from memo2lean import Unsupported, ident, model
+from memo2lean import Rejected, Unsupported, ident, model
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEPTH = 64  # how deep references between models are followed
@@ -142,14 +143,44 @@ def source(raw, env, args_of, shown=None):
                 return {ARITHMETIC[op](*c) for c in itertools.islice(combos, 4097)}
         raise Unsupported("a function applied to something other than arithmetic on choices")
 
+    memo2lean.EXOTIC = {name: set(p[0].exotic_parameters) for name, p in parsed.items()}
+    memo2lean.BOUND_IDS.clear()
+    # the arrays that the parameters of the models shown hold, by the name of the parameter
+    arrays = {}
+    for f in shown:
+        ctxt, given_here = parsed[f.__name__][0], list(args_of.get(f.__name__, ()))
+        for i, param in enumerate(ctxt.static_parameters):
+            if i < len(given_here):
+                value = given_here[i]
+            elif ctxt.static_defaults[i] is not None:
+                value = eval(ctxt.static_defaults[i], dict(env))
+            else:
+                raise Unsupported("a model that is given no parameters")
+            if param in ctxt.exotic_parameters:
+                if not isinstance(value, jax.numpy.ndarray):
+                    raise Rejected(f"the parameter {param} is not an array")
+                arrays[param] = value
+            elif numpy.ndim(value) > 0:
+                raise Rejected(f"the parameter {param} is not a number")
+
+    def fixed(what):
+        return arrays[what] if what in arrays else eval(what, dict(env))
+
     functions = {}  # each outside function, taking the arguments given by keyword last
-    for _, ss, rets in parsed.values():
+    for model_name, (ctxt, ss, rets) in parsed.items():
+        memo2lean.EXOTIC_HERE.clear(); memo2lean.EXOTIC_HERE.update(ctxt.exotic_parameters)
         for n in nodes([ss, rets]):
             if isinstance(n, EFFI):
                 name, args = memo2lean.effective(n)
                 keys, base, k = list(n.kwargs), env[n.name], len(n.args)
-                functions[name] = (lambda *p, base=base, keys=keys, k=k:
-                                   base(*p[:k], **dict(zip(keys, p[k:]))))
+                held = {i: fixed(what) for i, what in memo2lean.bindings(n).items()}
+
+                def function(*p, base=base, keys=keys, k=k, held=held):
+                    p, full = list(p), []
+                    for i in range(len(p) + len(held)):
+                        full.append(held[i] if i in held else p.pop(0))
+                    return base(*full[:k], **dict(zip(keys, full[k:])))
+                functions[name] = function
                 slots = calls.setdefault(name, [set() for _ in args])
                 for slot, arg in zip(slots, args):
                     slot |= possible(arg)
@@ -175,7 +206,8 @@ def source(raw, env, args_of, shown=None):
         return f"{ident(name)} {' '.join(ps)}" if ps else ident(name)
 
     def params(name):
-        return list(map(ident, parsed[name][0].static_parameters))
+        return [ident(p) for p in parsed[name][0].static_parameters
+                if p not in parsed[name][0].exotic_parameters]
 
     # the outside functions of the models, and an index for each model with its parameters
     fns = [f"  | {ident(name)} : Fn {len(slots)}" for name, slots in calls.items()]
@@ -184,6 +216,7 @@ def source(raw, env, args_of, shown=None):
                for name in parsed for n in each(name)]
     lean = ["import Minimemo", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
+            "namespace Translated  -- a model may have the name of something in Lean", "",
             f"inductive Agent{bars(map(ident, agents))} deriving DecidableEq, Repr",
             f"inductive Name{bars(map(ident, names))} deriving DecidableEq, Repr",
             f"inductive Dom{bars(domains)} deriving DecidableEq",
@@ -200,8 +233,12 @@ def source(raw, env, args_of, shown=None):
         if numpy.prod([len(c) for c in columns]) > 4096:
             raise Unsupported("a function with too many values to list")
         points = itertools.product(*columns)
-        rows = ", ".join(f"([{', '.join(num(v) for v in p)}], {num(number(f(*map(native, p))))})"
-                         for p in points)
+        def value(p):
+            out = f(*map(native, p))
+            if numpy.ndim(out) > 0:
+                raise Rejected("an outside function that does not return a number")
+            return num(number(out))
+        rows = ", ".join(f"([{', '.join(num(v) for v in p)}], {value(p)})" for p in points)
         args = " ".join(f"a{i}" for i in range(len(slots)))
         binder = f" ({args} : {K})" if slots else ""
         lean += [f"def {ident(name)}{binder} : {K} :=",
@@ -224,7 +261,9 @@ def source(raw, env, args_of, shown=None):
     lean += ["  target _ r := r", "",
              f"def interp (p : Ix) : Interp Dom (Refs Ix Fn) {K} :=",
              f"  {of} dom (fam.call dom call (fam.entries {of} dom call {DEPTH}) p)", ""]
-    given = {f.__name__: [rat(a) for a in args_of.get(f.__name__, ())] for f in shown}
+    given = {f.__name__: [rat(a) for a, p in zip(args_of.get(f.__name__, ()),
+                                                 parsed[f.__name__][0].static_parameters)
+                          if p not in parsed[f.__name__][0].exotic_parameters] for f in shown}
     shown_names = [(f.__name__, n) for f in shown for n in each(f.__name__)]
     for name, n in shown_names:
         m = applied(n, given[name])
@@ -233,6 +272,7 @@ def source(raw, env, args_of, shown=None):
     for name, n in shown_names:  # why each model is not accepted, if it is not
         lean.append(f"#eval Model.error ({applied(n, given[name])})")
     sizes = {f.__name__: [len(values[d]) for d in axes_of(f.__name__)] for f in shown}
+    lean.append("end Translated")
     return "\n".join(lean) + "\n", sizes
 
 
