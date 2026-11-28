@@ -51,6 +51,7 @@ def Exp.float : {k : ℕ} → Exp k → (Fin k → Float) → Float
   | _, .exp, v => (v 0).exp
   | _, .log, v => (v 0).log
   | _, .rpow, v => (v 0).pow (v 1)
+  | _, .mod, v => v 0 - v 1 * (v 0 / v 1).floor
   | _, .negMulLog, v => if v 0 == 0 then 0 else -(v 0 * (v 0).log)
   | _, .klTerm, v =>
     -- memo keeps the difference of the logarithms finite, within single precision

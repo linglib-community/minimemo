@@ -65,14 +65,16 @@ inductive Ref (A : Type u) : Type u
   | agent (α : A)
   deriving DecidableEq, Repr
 
-/-- The **operators of memo that leave the rational numbers**: the exponential, the logarithm and
-the power with any exponent. A model uses them as outside functions, with their meaning in the
+/-- The **operators of memo that leave the rational numbers**: the exponential, the logarithm,
+the power with any exponent and the remainder. A model uses them as outside functions, with their meaning in the
 real numbers or in floating point. -/
 inductive Exp : ℕ → Type
   | exp : Exp 1
   | log : Exp 1
   /-- The power `a ** b`. -/
   | rpow : Exp 2
+  /-- The remainder `a % b`, with the sign of `b`. -/
+  | mod : Exp 2
   /-- The term `-p * log p` of an entropy, which is zero at zero. -/
   | negMulLog : Exp 1
   /-- The term `a * log (a / b)` of a divergence, which is zero where `a` is zero. -/

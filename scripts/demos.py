@@ -70,11 +70,12 @@ def main() -> None:
         # a Python expression in braces is read in the module of the model
         made = [vars(v) for v in scope.values() if isinstance(v, types.ModuleType)
                 and getattr(v, "__file__", None) is None]
-        memo2lean.INLINE_ENV = {k: v for d in made + [scope] for k, v in d.items()}
-        memo2lean.SIGNATURES = {}
+        memo2lean.INLINE_ENV = {k: v for d in [scope] + made for k, v in d.items()}
+        memo2lean.SIGNATURES, memo2lean.RETURNS = {}, {}
         for f in seen:
             try:
-                ctxt = parse_memo(f)[0]
+                ctxt, _, rets = parse_memo(f)
+                memo2lean.RETURNS[f.__name__] = len(rets)
                 memo2lean.SIGNATURES[f.__name__] = (list(ctxt.static_parameters),
                                                    list(ctxt.static_defaults))
             except Exception:

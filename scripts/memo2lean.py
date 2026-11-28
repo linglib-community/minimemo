@@ -23,9 +23,9 @@ BINARY = {Op.ADD: "add", Op.SUB: "sub", Op.MUL: "mul", Op.DIV: "div", Op.EQ: "eq
 SWAPPED = {Op.GT: "lt", Op.GTE: "le"}  # a > b is b < a
 UNARY = {Op.NEG: "neg", Op.ABS: "abs"}
 # Operators that are not rational: they are outside functions, with a meaning over the reals.
-OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow"}
+OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow", Op.MOD: "mod"}
 # Their numbers of arguments, with those of the terms of an entropy and of a divergence.
-OUTSIDE_ARITY = {"exp": 1, "log": 1, "rpow": 2, "negMulLog": 1, "klTerm": 2}
+OUTSIDE_ARITY = {"exp": 1, "log": 1, "rpow": 2, "mod": 2, "negMulLog": 1, "klTerm": 2}
 
 
 def outside_of(n) -> str | None:
@@ -214,7 +214,13 @@ def static_test(e) -> str:
     match e:
         case EOp(op=op, args=[a, b]) if op in STATIC_TEST:
             return f"{static(a)} {STATIC_TEST[op]} {static(b)}"
-    raise Unsupported("a test on parameters that is not a comparison")
+        case EOp(op=Op.AND, args=[a, b]):
+            return f"({static_test(a)} ∧ {static_test(b)})"
+        case EOp(op=Op.OR, args=[a, b]):
+            return f"({static_test(a)} ∨ {static_test(b)})"
+        case EOp(op=Op.INV, args=[a]):
+            return f"¬ {static_test(a)}"
+    return f"{static(e)} ≠ 0"  # a number is taken as true when it is not zero
 
 
 def effective(e) -> tuple[str, list]:
