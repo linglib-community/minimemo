@@ -10,6 +10,7 @@ public import Minimemo.Theory.Kernel
 public import Mathlib.Analysis.SpecialFunctions.Exp
 public import Mathlib.Topology.Order.MonotoneConvergence
 public import Mathlib.Topology.Algebra.Order.Field
+public import Mathlib.Topology.Order.IntermediateValue
 public import Mathlib.Algebra.Order.Field.Basic
 
 /-!
@@ -52,6 +53,9 @@ likely. One more depth of reasoning takes the probability `p` of the green squar
   `p = 2 / (3 + exp (β * (1 - p)))`.
 * `Memo.RSA.limit_anti`, `Memo.RSA.tendsto_limit`: the limit falls as `β` grows, from one half at
   zero, and tends to zero.
+* `Memo.RSA.exists_level_eq`: the array does not tell the depth. The listener at any depth above
+  zero has the array of the listener at any other depth above zero, at another `β`.
+* `Memo.RSA.level_zero_ne`: the array tells depth zero from every other depth.
 
 ## Implementation notes
 
@@ -380,5 +384,71 @@ theorem tendsto_limit : Filter.Tendsto limit Filter.atTop (nhds 0) := by
   · filter_upwards [Filter.eventually_ge_atTop 0] with β hβ using limit_le hβ
 
 end Limit
+
+section Depth
+
+/-! ### What the array says of the depth -/
+
+/-- The probability of the green square is continuous in `β`, at every depth. -/
+theorem continuous_prob (t : ℕ) : Continuous fun β ↦ prob β t := by
+  induction t with
+  | zero => exact continuous_const
+  | succ t ih =>
+    simp_rw [prob_succ]
+    exact continuous_const.div (by fun_prop) fun β ↦ by positivity
+
+/-- At a depth above zero and a positive `β`, the green square is less likely than the green
+circle on hearing *green*: the listener at depth zero, who finds them equally likely, is told apart
+from every other. -/
+theorem prob_lt_half {β : ℝ} (hβ : 0 < β) {t : ℕ} (ht : 1 ≤ t) : prob β t < 1 / 2 := by
+  refine (prob_antitone hβ.le ht).trans_lt ?_
+  have h1 : 1 < Real.exp (β * (1 - prob β 0)) :=
+    Real.one_lt_exp_iff.2 (mul_pos hβ (by norm_num [prob]))
+  rw [prob_succ, div_lt_div_iff₀ (by positivity) (by norm_num)]
+  linarith
+
+/-- At a depth above zero, the probability of the green square tends to zero as `β` grows. -/
+theorem tendsto_prob_atTop {t : ℕ} (ht : 1 ≤ t) :
+    Filter.Tendsto (fun β ↦ prob β t) Filter.atTop (nhds 0) := by
+  have h : Filter.Tendsto (fun β : ℝ ↦ 2 / (3 + Real.exp (β / 2))) Filter.atTop (nhds 0) :=
+    Filter.Tendsto.div_atTop tendsto_const_nhds (Filter.tendsto_atTop_add_const_left _ _
+      (Real.tendsto_exp_atTop.comp (Filter.tendsto_id.atTop_div_const (by norm_num))))
+  refine tendsto_of_tendsto_of_tendsto_of_le_of_le' tendsto_const_nhds h ?_ ?_
+  · filter_upwards [Filter.eventually_ge_atTop 0] with β hβ using (prob_le_half hβ t).1.le
+  · filter_upwards [Filter.eventually_ge_atTop 0] with β hβ
+    refine (prob_antitone hβ ht).trans (le_of_eq ?_)
+    rw [prob_succ, prob]
+    ring_nf
+
+/-- At a depth above zero, every probability between zero and one half is the probability of the
+green square at some positive `β`. -/
+theorem exists_prob_eq {t : ℕ} (ht : 1 ≤ t) {q : ℝ} (h0 : 0 < q) (h1 : q < 1 / 2) :
+    ∃ β, 0 < β ∧ prob β t = q := by
+  obtain ⟨B, hB0, hB⟩ : ∃ B, 0 ≤ B ∧ prob B t < q :=
+    (((tendsto_prob_atTop ht).eventually (gt_mem_nhds h0)).and
+      (Filter.eventually_ge_atTop 0)).exists.imp fun _ h ↦ ⟨h.2, h.1⟩
+  obtain ⟨β, hβ, h⟩ := intermediate_value_Icc' hB0 (continuous_prob t).continuousOn
+    (show q ∈ Set.Icc (prob B t) (prob 0 t) from ⟨hB.le, by rw [prob_zero_left]; exact h1.le⟩)
+  refine ⟨β, lt_of_le_of_ne hβ.1 fun h0' ↦ ?_, h⟩
+  have h2 : prob 0 t = q := by rw [h0']; exact h
+  rw [prob_zero_left] at h2
+  linarith
+
+/-- **The array does not tell the depth.** The listener at any depth above zero and any positive
+`β` has the array of the listener at any other depth above zero, at some positive `β'`. -/
+theorem exists_level_eq {β : ℝ} (hβ : 0 < β) {t t' : ℕ} (ht : 1 ≤ t) (ht' : 1 ≤ t') :
+    ∃ β', 0 < β' ∧ level β' t' = level β t := by
+  obtain ⟨β', hβ', h⟩ := exists_prob_eq ht' (prob_le_half hβ.le t).1 (prob_lt_half hβ ht)
+  exact ⟨β', hβ', by rw [level_eq, level_eq, h]⟩
+
+/-- The array tells depth zero from every other depth, at every positive `β`. -/
+theorem level_zero_ne {β β' : ℝ} (hβ : 0 < β) {t : ℕ} (ht : 1 ≤ t) : level β' 0 ≠ level β t := by
+  rw [level_eq, level_eq]
+  intro h
+  have := congrArg (fun l ↦ l.getD 0 0) h
+  simp only [arrayOf, List.getD_cons_zero, prob] at this
+  linarith [prob_lt_half hβ ht]
+
+end Depth
 
 end Memo.RSA
