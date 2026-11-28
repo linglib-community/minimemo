@@ -103,7 +103,7 @@ def predict(e) -> str:
                 todo.append(s)
             elif getattr(s, "who", None) == me:
                 if isinstance(s, SKnows):
-                    raise Unsupported("a `knows` after a prediction")
+                    raise Rejected("a `knows` after a prediction")
                 if isinstance(s, SShow):
                     guess = fresh(s.target_id, EXTRA_NAMES)
                     DOMAIN[guess] = DOMAIN[s.target_id]
@@ -156,6 +156,10 @@ def nodes(x):
     elif isinstance(x, dict):
         for y in x.values():
             yield from nodes(y)
+
+
+class Rejected(Exception):
+    """The model is one that memo does not accept, for a reason that the translation finds."""
 
 
 class Unsupported(Exception):
@@ -283,7 +287,7 @@ def expr(e) -> str:
             return predict(inner)
         case EUtil(goal=goal):
             if not PREFIX or goal not in GOALS.get(PREFIX[-1], {}):
-                raise Unsupported("a goal that the agent does not have")
+                raise Rejected("a goal that the agent does not have")
             return predict(GOALS[PREFIX[-1]][goal])
         case EExpect(expr=inner, reduction="expectation"):
             return f".expect ({expr(inner)})"

@@ -22,7 +22,7 @@ from memo.parse import parse_memo
 
 from lean import ROOT, nodes, run, source, verdict
 import memo2lean
-from memo2lean import Unsupported
+from memo2lean import Rejected, Unsupported
 
 
 @dataclasses.dataclass
@@ -104,6 +104,8 @@ def check(i: int, t: Test) -> tuple[str, str]:
             raise Unsupported("a model that is given no parameters")
         given = list(t.args) + [eval(d, env) for d in defaults]
         text, sizes = source(models(t), env, {name: given}, shown=[t.f])
+    except Rejected as e:
+        return ("ok" if t.outcome == "ce" else "differs"), f"rejected: {e}"
     except Unsupported as e:
         return "skipped", str(e)
     except Exception as e:
