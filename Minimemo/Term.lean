@@ -89,6 +89,15 @@ def mul (a b : Term D F) : Term D F := .app (.inl .mul) [a, b]
 /-- The quotient of two terms. -/
 def div (a b : Term D F) : Term D F := .app (.inl .div) [a, b]
 
+/-- The places where `t` is greatest over the choices in a list together: the number one there, and
+zero elsewhere. A place is one of them when `t` is greatest there along the later choices, and the
+greatest value along those is greatest along the first. -/
+def bestOver : List ℕ → Term D F → Term D F
+  | [], _ => .lit 1
+  | i :: is, t =>
+    let b := bestOver is t
+    mul (.best i (div (.sum is (mul t b)) (.sum is b))) b
+
 /-- The belief `w` after the choices in `over` are made together with weight `t`: the table `w`
 times `t` divided by the sum of `t` over them. -/
 def chooses (w : ℕ) (over : List ℕ) (t : Term D F) : Term D F :=

@@ -153,6 +153,9 @@ inductive Stmt (A N D : Type u) (F : ℕ → Type u) : Type u
   /-- The statement `α: chooses(x in X, y in Y, wpp=e)`: the agent `α` chooses several values
   together, with probability proportional to `e`. -/
   | choosesMany (α : A) (xs : List (N × D)) (e : Expr A N D F)
+  /-- The statement `α: chooses(x in X, y in Y, to_maximize=e)`: the agent `α` makes the choices
+  `xs` together, uniformly among the values at which `e` is greatest. -/
+  | choosesManyMax (α : A) (xs : List (N × D)) (e : Expr A N D F)
   /-- The statement `α: chooses(x in X, to_maximize=e)`: the agent `α` chooses `x` from the domain
   `X` uniformly among the values at which `e` is greatest. -/
   | choosesMax (α : A) (x : N) (X : D) (e : Expr A N D F)

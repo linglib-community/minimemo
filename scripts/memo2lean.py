@@ -375,6 +375,9 @@ def stmt_in(s) -> str:
         case SChoose(who=who, choices=choices, wpp=wpp, reduction="normalize"):
             xs = ", ".join(f"(.{ident(x)}, .{d})" for x, d in choices)
             return f".choosesMany .{ident(who)} [{xs}]\n  ({expr(wpp)})"
+        case SChoose(who=who, choices=choices, wpp=wpp, reduction="maximize") if len(choices) > 1:
+            xs = ", ".join(f"(.{ident(x)}, .{d})" for x, d in choices)
+            return f".choosesManyMax .{ident(who)} [{xs}]\n  ({expr(wpp)})"
         case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="maximize"):
             return f".choosesMax .{ident(who)} .{ident(name)} .{domain}\n  ({expr(wpp)})"
         case SSnapshot(who=who, alias=alias):

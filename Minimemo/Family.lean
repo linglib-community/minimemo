@@ -76,7 +76,8 @@ def Expr.refs : Expr A N D (Refs R F) → List R
 
 /-- The references in a statement. -/
 def Stmt.refs : Stmt A N D (Refs R F) → List R
-  | .chooses _ _ _ e | .choosesMax _ _ _ e | .choosesMany _ _ e | .observesEvent _ e => Expr.refs e
+  | .chooses _ _ _ e | .choosesMax _ _ _ e | .choosesMany _ _ e | .choosesManyMax _ _ e
+  | .observesEvent _ e => Expr.refs e
   | .thinks _ s => Stmt.refs s
   | .seq s₁ s₂ => Stmt.refs s₁ ++ Stmt.refs s₂
   | .observes .. | .knows .. | .snapshot .. | .variant .. | .forgets .. | .pass => []

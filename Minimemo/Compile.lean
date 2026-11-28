@@ -169,7 +169,7 @@ def Expr.doms : Expr A N D F → List D
 in the order of their numbers. -/
 def Stmt.doms : Stmt A N D F → List D
   | .chooses _ _ X e | .choosesMax _ _ X e => X :: Expr.doms e
-  | .choosesMany _ xs e => xs.map (·.2) ++ Expr.doms e
+  | .choosesMany _ xs e | .choosesManyMax _ xs e => xs.map (·.2) ++ Expr.doms e
   | .observesEvent _ e => Expr.doms e
   | .thinks _ s => Stmt.doms s
   | .seq s₁ s₂ => Stmt.doms s₁ ++ Stmt.doms s₂
@@ -276,6 +276,9 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
   | .choosesMax α x X e =>
     choose S g α [(x, X)] (.best g.next) (Expr.doms e).length
       (Expr.term e ((S.agent α).own [(x, X)] g.next) { g with next := g.next + 1 })
+  | .choosesManyMax α xs e =>
+    choose S g α xs (Term.bestOver (xs.zipIdx.map fun p ↦ g.next + p.2)) (Expr.doms e).length
+      (Expr.term e ((S.agent α).own xs g.next) { g with next := g.next + xs.length })
   | .choosesMany α xs e =>
     choose S g α xs id (Expr.doms e).length
       (Expr.term e ((S.agent α).own xs g.next) { g with next := g.next + xs.length })
