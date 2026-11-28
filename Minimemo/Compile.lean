@@ -114,6 +114,9 @@ def setAgent (S : Scope A N D) (α : A) (Sα : Scope A N D) : Scope A N D :=
 /-- The choice that a choice of the scope equals outside. -/
 def link (S : Scope A N D) (i : ℕ) : ℕ := (S.links.lookup i).getD i
 
+/-- Whether the mind has the choice with the number `i`. -/
+def has (S : Scope A N D) (i : ℕ) : Bool := S.entries.any (·.2.index == i)
+
 end Scope
 
 /-- Why a model is not accepted. -/
@@ -137,6 +140,9 @@ inductive Error (A N : Type u) : Type u
   | alreadyCertain (α β : A) (x : N)
   /-- The agent `α` cannot forget `x`: it has no such choice of its own, or it was told it. -/
   | cannotForget (α : A) (x : N)
+  /-- What the agent `α` answers, or the weight of its choice, depends on a choice that the mind
+  asking has forgotten. -/
+  | forgotten (α : A)
   deriving DecidableEq, Repr
 
 /-- An optional value, or the error `e`. -/
@@ -178,6 +184,7 @@ def choose (S : Scope A N D) (g : Gen D F) (α : A) (xs : List (N × D)) (wrap :
     if deps.all (· ∈ Sα'.certain) then
       let S' := xs.zipIdx.foldl
         (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
+      if !(deps.map Sα'.link).all S'.has then .error (.forgotten α) else
       let (g₁, r) := g.push (.rename Sα'.links (wrap t))
       let (g', w) := g₁.push (Term.chooses S.table (xs.zipIdx.map fun p ↦ g.next + p.2) (.ref r))
       pure ({ S'.setAgent α Sα' with table := w }, { g' with next := g.next + xs.length + extra })
@@ -207,7 +214,9 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) :
   | .query α e => do
     let Sα := S.agent α
     let (t, deps) ← Expr.term e Sα g
-    if deps.all (· ∈ Sα.certain) then pure (.rename Sα.links t, (deps.map Sα.link).dedup)
+    if deps.all (· ∈ Sα.certain) then
+      let deps' := (deps.map Sα.link).dedup
+      if deps'.all S.has then pure (.rename Sα.links t, deps') else .error (.forgotten α)
     else .error (.uncertainQuery α)
   | .expect e => do
     let (t, deps) ← Expr.term e S g
