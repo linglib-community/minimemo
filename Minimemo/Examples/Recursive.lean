@@ -6,6 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Examples.Listener
+public import Minimemo.Theory.Family
 public import Mathlib.Analysis.SpecificLimits.Basic
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FieldSimp
@@ -140,26 +141,21 @@ theorem entries_model (below : ℕ → List ℚ) (t : ℕ) (p : ℚ) (h : below 
       (model (t + 1)) = some (arrayOf (2 * p / (3 * p + 1))) := by
   rw [model_succ, Model.entries, program_eq]
   show some ((Listener.program weightTerm).entries _) = _
-  rw [Listener.entries_program (w := Listener.weight id (below t)) fun σ ↦ rfl, h,
+  rw [Listener.entries_program (w := Listener.weight id (below t)) fun Φ σ ↦ rfl, h,
     Listener.listener_weight id p hp one_pos (by simpa using hp1)]
   simp
 
 theorem refs_one : (model 1).refs = [()] := by decide
 
+theorem refs_succ (t : ℕ) : (family.model (t + 1)).refs = [()] := by
+  rw [show family.model (t + 1) = model (t + 1) from rfl, model_succ]
+  exact refs_one
+
 /-- The array at a depth above zero is the array of the model over the array one depth below. -/
 theorem level_succ (t : ℕ) :
-    level (t + 1) = (Model.entries (.ofField (domOf ℚ)
-      (family.call (domOf ℚ) (callOf ℚ) (fun q ↦ if q = t then level t else []) (t + 1)))
-      (model (t + 1))).getD [] := by
-  have hb : (fun q ↦ (((model (t + 1)).refs.map fun r ↦ (family.target (t + 1) r,
-      family.entries .ofField (domOf ℚ) (callOf ℚ) (t + 1) (family.target (t + 1) r))).lookup
-        q).getD []) = fun q ↦ if q = t then level t else [] := by
-    funext q
-    rw [model_succ, refs_one]
-    have hq : (q == t) = decide (q = t) := rfl
-    by_cases h : q = t <;> simp [List.lookup, family, level, hq, h]
-  rw [← hb]
-  rfl
+    ∃ below : ℕ → List ℚ, below t = level t ∧ level (t + 1) = (Model.entries (.ofField (domOf ℚ)
+      (family.call (domOf ℚ) (callOf ℚ) below (t + 1))) (model (t + 1))).getD [] :=
+  family.entries_of_refs_eq_singleton .ofField (domOf ℚ) (callOf ℚ) (refs_succ t) (t + 1)
 
 /-- The array of the listener at every depth. -/
 theorem level_eq (t : ℕ) : level t = arrayOf (2 ^ t / (3 * 2 ^ t - 1)) := by
@@ -168,7 +164,8 @@ theorem level_eq (t : ℕ) : level t = arrayOf (2 ^ t / (3 * 2 ^ t - 1)) := by
   | succ t ih =>
     have h2 : (1 : ℚ) ≤ 2 ^ t := one_le_pow₀ (by norm_num)
     have h3 : (0 : ℚ) < 3 * 2 ^ t - 1 := by linarith
-    rw [level_succ, entries_model _ t _ (by simpa using ih)
+    obtain ⟨below, hb, he⟩ := level_succ t
+    rw [he, entries_model below t _ (hb.trans ih)
       (by positivity) (by rw [div_lt_one h3]; linarith), Option.getD_some]
     congr 1
     rw [pow_succ]

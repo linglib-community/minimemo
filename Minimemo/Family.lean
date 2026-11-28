@@ -38,10 +38,9 @@ values of the expressions.
 
 ## Implementation notes
 
-`Memo.Family.entries` is defined by recursion on a depth, so that Lean evaluates it. A reference
-at the depth zero reads an empty array, whose entries are zero. So the array of a member is right
-when the depth is at least the number of references that are followed from it, one inside the
-other.
+The arrays are found by recursion on a depth, so that Lean evaluates them, and each array is found
+once however many members refer to it. The array of a member is right when the depth is at least
+the number of references that are followed from it, one inside the other.
 -/
 
 @[expose] public section
@@ -114,23 +113,8 @@ def Family.call (below : P → List K) (p : P) : {k : ℕ} → Refs R F k → (F
 variable [One K] [Add K] [LE K] [DecidableLE K] [DecidableEq A] [DecidableEq N] [DecidableEq D]
   [BEq P]
 
-/-- The **array of a member** of a family, with the entries in row-major order, where references
-are followed to the depth `n`. The interpretation is `of`, which is `Interp.ofField` in an ordered
-field, with the domains `dom` and the outside functions `fn`. The arrays of the members that the
-member refers to are computed first, each once. -/
-def Family.entries : ℕ → P → List K
-  | 0, _ => []
-  | n + 1, p =>
-    let arrays := (fam.model p).refs.map fun r ↦
-      (fam.target p r, Family.entries n (fam.target p r))
-    (Model.entries (of dom (fam.call dom fn (fun q ↦ (arrays.lookup q).getD []) p))
-      (fam.model p)).getD []
-
 /-- The arrays of a member and of the members that it refers to, each computed once: the list
-`cache` holds those found so far. A family whose members refer to one another along many paths
-is computed in as many steps as it has members, where `Family.entries` takes a step for each
-path. The two give the same array when the depth `n` is at least the number of references that
-are followed from the member, one inside the other. -/
+`cache` holds those found so far, and references are followed to the depth `n`. -/
 def Family.fill : ℕ → P → List (P × List K) → List (P × List K)
   | 0, _, cache => cache
   | n + 1, p, cache =>
@@ -141,11 +125,19 @@ def Family.fill : ℕ → P → List (P × List K) → List (P × List K)
       (p, (Model.entries (of dom (fam.call dom fn (fun q ↦ (cache.lookup q).getD []) p))
         (fam.model p)).getD []) :: cache
 
-/-- The meaning of the references and the outside functions in the member `p`, where each array
-that is referred to is computed once. -/
+/-- The **interpretation of a member** of a family: the meaning of its references and of the
+outside functions, where the arrays of the members that it refers to are found to the depth `n`.
+The interpretation is built by `of`, which is `Interp.ofField` in an ordered field, from the
+domains `dom` and the outside functions `fn`. -/
 def Family.interp (n : ℕ) (p : P) : Interp D (Refs R F) K :=
   let cache := (fam.model p).refs.foldl (fun cache r ↦ fam.fill of dom fn n (fam.target p r) cache)
     []
   of dom (fam.call dom fn (fun q ↦ (cache.lookup q).getD []) p)
+
+/-- The **array of a member** of a family, with the entries in row-major order, where references
+are followed to the depth `n`. A reference past that depth reads an empty array, whose entries are
+zero. -/
+def Family.entries (n : ℕ) (p : P) : List K :=
+  (Model.entries (fam.interp of dom fn n p) (fam.model p)).getD []
 
 end Memo

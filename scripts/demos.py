@@ -1,9 +1,14 @@
-"""Report which models in memo's demos minimemo can translate.
+"""Run minimemo on the models of memo's demos, and check that it gives what memo gives.
 
-    git clone --depth 1 https://github.com/kach/memo
-    python scripts/demos.py memo/demo
+    git clone --depth 1 https://github.com/kach/memo memo-src
+    python scripts/demos.py memo-src/demo [name ...]
+
+Each demo is run as it is. A model is compared at the first three settings of its parameters
+that the demo calls it with. A model that the demo does not call is only translated. One Lean
+process runs at a time.
 """
 import collections
+import inspect
 import json
 import os
 import pathlib
@@ -13,33 +18,71 @@ import tempfile
 import types
 
 os.environ.setdefault("MPLBACKEND", "Agg")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
 
+import jax
+import numpy
+import memo
 from memo import codegen
+from memo.core import MemoError
+from memo.parse import parse_memo
 
 import memo2lean
-from memo.parse import parse_memo
-from memo2lean import Unsupported, model
+from test_memo_suite import Test, check
 
-seen = []
-original = codegen.parse_memo
-
-
-def recording(f):
-    seen.append(f)
-    return original(f)
+compile_model = codegen.memo
+recorded: list[Test] = []
+declared: list = []
+known: dict = {}
+scope: dict = {}
 
 
-codegen.parse_memo = recording
+def concrete(xs) -> bool:
+    return not any(isinstance(x, jax.core.Tracer) for x in xs)
+
+
+def memo_(f=None, **kwargs):
+    """memo's decorator, which also records the first call of the model with numbers."""
+    if f is None:
+        return lambda g: memo_(g, **kwargs)
+    known[f.__name__] = f
+    declared.append(f)
+
+    def install(text):  # memo compiles a model in the module of the model, which is the demo
+        exec(text, scope)
+        return scope
+    kwargs.setdefault("install_module", install)
+    compile_model(f, **kwargs)
+    compiled = scope[f.__name__]  # memo leaves the model there
+    before, seen = dict(known), []
+
+    def model(*args, **kw):
+        out = compiled(*args, **kw)
+        if len(seen) < 3 and concrete(list(args) + list(kw.values())):
+            try:
+                params = parse_memo(f)[0].static_parameters
+                given = list(args) + [kw[p] for p in params[len(args):] if p in kw]
+                key = repr([numpy.asarray(g).tolist() for g in given])
+                if len(given) == len(args) + len(kw) and key not in seen:
+                    seen.append(key)
+                    recorded.append(Test(f, dict(known) | before, dict(scope), "pass", out,
+                                         tuple(given)))
+            except Exception:
+                pass
+        return out
+    model.__dict__.update(getattr(compiled, "__dict__", {}))
+    model.__name__ = f.__name__
+    return model
 
 
 def source(path: pathlib.Path) -> str:
     if path.suffix == ".py":
         return path.read_text()
-    cells = json.loads(path.read_text())["cells"]
     lines = []
-    for cell in cells:
+    for cell in json.loads(path.read_text())["cells"]:
         if cell["cell_type"] == "code":
-            lines += [l for l in "".join(cell["source"]).split("\n") if not l.lstrip().startswith(("%", "!"))]
+            lines += [l for l in "".join(cell["source"]).split("\n")
+                      if not l.lstrip().startswith(("%", "!"))]
     return "\n".join(lines)
 
 
@@ -47,57 +90,65 @@ def timeout(*_):
     raise TimeoutError
 
 
-def main() -> None:
-    folder = pathlib.Path(sys.argv[1])
-    reasons = collections.Counter()
-    total = translated = 0
+def main() -> int:
+    folder = pathlib.Path(sys.argv[1]).resolve()
+    only = sys.argv[2:]
+    memo.memo = memo_
+    counts, reasons, n = collections.Counter(), collections.Counter(), 0
     for path in sorted(list(folder.glob("*.py")) + list(folder.glob("*.ipynb"))):
-        seen.clear()
-        note = ""
+        if path.name == "test.py" or (only and not any(o in path.name for o in only)):
+            continue
+        recorded.clear(); declared.clear(); known.clear(); scope.clear()
+        scope.update({"__name__": "__main__", "__file__": ""})
         signal.signal(signal.SIGALRM, timeout)
-        signal.alarm(180)
-        scope = {"__name__": "__main__", "__file__": ""}
+        signal.alarm(240)
         try:
             os.chdir(folder)
-            # memo reads a model's source back from its file, so a notebook's code goes in a file
             script = pathlib.Path(tempfile.mkdtemp()) / (path.stem.replace("-", "_") + ".py")
             script.write_text(source(path))
             exec(compile(script.read_text(), str(script), "exec"), scope)
         except BaseException as e:  # a demo may need data or packages that are not here
-            note = f"  (stopped: {type(e).__name__})"
+            stopped = f"  [stopped: {type(e).__name__}: {str(e)[:60]}]"
+        else:
+            stopped = ""
         finally:
             signal.alarm(0)
-        # a Python expression in braces is read in the module of the model
-        made = [vars(v) for v in scope.values() if isinstance(v, types.ModuleType)
-                and getattr(v, "__file__", None) is None]
-        memo2lean.INLINE_ENV = {k: v for d in [scope] + made for k, v in d.items()}
-        memo2lean.SIGNATURES, memo2lean.RETURNS = {}, {}
-        for f in seen:
+        os.chdir(pathlib.Path(__file__).resolve().parent.parent)
+        line = []
+        for t in list(recorded):
+            n += 1
+            verdict, why = check(5000 + n, t)
+            counts[verdict] += 1
+            if verdict == "skipped":
+                reasons[why] += 1
+            shown = tuple(round(float(a), 3) if numpy.ndim(a) == 0 else "array" for a in t.args)
+            line.append(f"{t.f.__name__}{shown}: {verdict}"
+                        + (f" ({why[:60]})" if why and verdict != "ok" else ""))
+        called = {t.f.__name__ for t in recorded}
+        for f in declared:  # a model that was not called: does it translate?
+            if f.__name__ in called:
+                continue
+            made = [vars(v) for v in scope.values() if isinstance(v, types.ModuleType)
+                    and getattr(v, "__file__", None) is None]
+            memo2lean.INLINE_ENV = {k: v for d in [scope] + made for k, v in d.items()}
             try:
-                ctxt, _, rets = parse_memo(f)
-                memo2lean.RETURNS[f.__name__] = len(rets)
-                memo2lean.SIGNATURES[f.__name__] = (list(ctxt.static_parameters),
-                                                   list(ctxt.static_defaults))
-            except Exception:
-                pass
-        ok, bad = 0, collections.Counter()
-        for f in seen:
-            try:
-                model(f)
-                ok += 1
-            except Unsupported as e:
-                bad[str(e)] += 1
+                memo2lean.model(f)
+                counts["translated"] += 1
+                line.append(f"{f.__name__}: translates")
             except Exception as e:
-                bad[f"{type(e).__name__}: {str(e)[:40]}"] += 1
-        total += len(seen)
-        translated += ok
-        reasons.update(bad)
-        why = ", ".join(f"{k} x{v}" for k, v in bad.most_common(4))
-        print(f"{path.name[:32]:32} {ok:3}/{len(seen):<3} {why}{note}")
-    print(f"\n{translated} of {total} models translate")
-    for k, v in reasons.most_common():
-        print(f"{v:4}  {k}")
+                why = str(e) or type(e).__name__
+                counts["skipped"] += 1
+                reasons[why[:60]] += 1
+                line.append(f"{f.__name__}: skipped ({why[:60]})")
+        print(f"{path.name[:34]:34} " + ("; ".join(line) if line else "no model")
+              + stopped, flush=True)
+    compared = counts["ok"] + counts["differs"]
+    print(f"\n{counts['ok']} of {compared} models agree; {counts['translated']} more translate and "
+          f"are not called; {counts['skipped']} are outside minimemo")
+    for why, k in reasons.most_common():
+        print(f"{k:4}  {why}")
+    return 1 if counts["differs"] else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

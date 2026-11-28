@@ -5,7 +5,7 @@ Authors: Robert Hawkins
 -/
 module
 
-public import Minimemo.Theory.Bridge.Table
+public import Minimemo.Theory.Table.Op
 public import Minimemo.Theory.Transfer
 
 /-!
