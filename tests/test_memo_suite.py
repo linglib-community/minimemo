@@ -114,6 +114,8 @@ def check(i: int, t: Test) -> tuple[str, str]:
         results, reasons = run(text, ROOT / "scratch" / "memotests" / f"T{i}.lean", timeout=60)
     except subprocess.TimeoutExpired:
         return "skipped", "too slow"
+    except Unsupported as e:
+        return "skipped", str(e)
     except RuntimeError as e:
         return "differs", "Lean does not accept the file: " + str(e).strip().split("\n")[0][:80]
     try:

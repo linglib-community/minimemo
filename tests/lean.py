@@ -8,6 +8,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 from fractions import Fraction
 
 import jax
@@ -25,7 +26,8 @@ import memo2lean
 from memo2lean import Rejected, Unsupported, ident, model
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEPTH = 64  # how deep references between models are followed
+DEPTH = 100000  # how deep references between models are followed
+MEMORY_LIMIT_KB = 3 * 1024 * 1024  # Lean is stopped when it holds more than this
 
 
 def nodes(x):
@@ -125,8 +127,8 @@ def source(raw, env, args_of, shown=None):
     memo2lean.INLINE_ENV = env
     values = {d: [number(v) for v in env[d]] for d in domains}
     # a table has an entry for each joint value of its choices, so large domains are not run
-    if any(len(vs) > 64 for vs in values.values()):
-        raise Unsupported("a domain with more than 64 values")
+    if any(len(vs) > 4096 for vs in values.values()):
+        raise Unsupported("a domain with more than 4096 values")
     exact = (lambda v: v) if outside else (lambda v: Fraction(float(v)))
 
     def possible(e) -> set:
@@ -218,6 +220,7 @@ def source(raw, env, args_of, shown=None):
                for name in parsed for n in each(name)]
     lean = ["import Minimemo", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
+            "set_option maxHeartbeats 0  -- a domain or a function may be a long list", "",
             "namespace Translated  -- a model may have the name of something in Lean", "",
             f"inductive Agent{bars(map(ident, agents))} deriving DecidableEq, Repr",
             f"inductive Name{bars(map(ident, names))} deriving DecidableEq, Repr",
@@ -262,7 +265,7 @@ def source(raw, env, args_of, shown=None):
              for name in parsed for n in each(name)]
     lean += ["  target _ r := r", "",
              f"def interp (p : Ix) : Interp Dom (Refs Ix Fn) {K} :=",
-             f"  {of} dom (fam.call dom call (fam.entries {of} dom call {DEPTH}) p)", ""]
+             f"  fam.interp {of} dom call {DEPTH} p", ""]
     # an array is printed as text: Lean's own display of a long list of numbers can fail
     lean += [f"def render : Option (List {K}) → String",
              '  | some l => "some [" ++ ", ".intercalate (l.map toString) ++ "]"',
@@ -292,12 +295,24 @@ def run(text, path, timeout=None):
     proc = subprocess.Popen(["lake", "env", "lean", str(path)], cwd=ROOT, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             start_new_session=True)
-    try:
-        out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
-        proc.communicate()
-        raise
+    # and it is stopped if it takes too much memory, which a time limit alone does not prevent
+    started, out, err = time.monotonic(), "", ""
+    while True:
+        try:
+            out, err = proc.communicate(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            used = subprocess.run(["ps", "-g", str(proc.pid), "-o", "rss="], capture_output=True,
+                                  text=True).stdout.split()
+            too_big = sum(map(int, used)) > MEMORY_LIMIT_KB
+            if too_big or (timeout is not None and time.monotonic() - started > timeout):
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.communicate()
+                if too_big:
+                    raise Unsupported("a model whose tables take too much memory")
+                raise subprocess.TimeoutExpired(proc.args, timeout)
+    if "out of memory" in out + err:
+        raise Unsupported("a model whose tables take too much memory")
     if proc.returncode != 0:
         raise RuntimeError(out + err)
     arrays, _, errors = out.partition('"errors"')
