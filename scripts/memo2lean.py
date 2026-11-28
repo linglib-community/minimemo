@@ -34,6 +34,7 @@ CONTINUATION: list = []
 # of choices that the translation adds.
 GOALS: dict[str, dict] = {}
 DOMAIN: dict[str, str] = {}
+SIGNATURES: dict[str, tuple[list, list]] = {}  # the parameters and defaults of each model
 EXTRA_AGENTS: list[str] = []
 EXTRA_NAMES: list[str] = []
 
@@ -110,8 +111,8 @@ def is_boolean(e) -> bool:
             return True
         case EOp(op=Op.ADD | Op.MUL, args=[a, b]):
             return is_boolean(a) and is_boolean(b)
-        case EFFI(name=name):
-            return name in BOOLEAN_FUNCTIONS
+        case EFFI():
+            return effective(e)[0] in BOOLEAN_FUNCTIONS
         case ELit(value=bool()):
             return True
     return False
@@ -194,6 +195,34 @@ def static_test(e) -> str:
     raise Unsupported("a test on parameters that is not a comparison")
 
 
+def effective(e) -> tuple[str, list]:
+    """An outside function with its arguments in order. Arguments given by keyword follow the
+    others, and their keywords are part of the name: the function is a different one with them."""
+    if not e.kwargs:
+        return e.name, list(e.args)
+    return e.name + "__" + "_".join(e.kwargs), list(e.args) + list(e.kwargs.values())
+
+
+def reference_args(name: str, args: list, kwargs: dict) -> list[str]:
+    """The parameters of a model that is referred to, in the order of the model: those given in
+    order, then each of the rest by its keyword or by its default."""
+    if name not in SIGNATURES:
+        if kwargs:
+            raise Unsupported("a reference by keyword to a model that is not a memo model")
+        return [static(a) for a in args]
+    params, defaults = SIGNATURES[name]
+    out = [static(a) for a in args]
+    for param, default in list(zip(params, defaults))[len(args):]:
+        if param in kwargs:
+            out.append(static(kwargs[param]))
+        elif default is not None:
+            q = Fraction(float(eval(default, dict(INLINE_ENV))))
+            out.append(str(q.numerator) if q.denominator == 1 and q >= 0 else f"({q})")
+        else:
+            raise Unsupported("a reference to a model that leaves a parameter out")
+    return out
+
+
 def prim(name: str, args: list[str]) -> str:
     """An operator of memo applied to expressions."""
     return f".prim {name} ![{', '.join(args)}]"
@@ -250,10 +279,11 @@ def expr(e) -> str:
             return prim("." + SWAPPED[op], [expr(b), expr(a)])
         case EOp(op=op, args=args) if op in OUTSIDE:
             return call(OUTSIDE[op], [expr(a) for a in args])
-        case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
+        case EFFI():
+            name, args = effective(e)
             return call(ident(name), [expr(a) for a in args])
-        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs) if not kwargs:
-            head = ident(name) + "".join(f" {static(a)}" for a in args)
+        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs, which_retval=None):
+            head = ident(name) + "".join(f" {a}" for a in reference_args(name, args, kwargs))
             return f".ref (.{head}) ![{', '.join(choice(who, c) for (_, who, c) in ids)}]"
         case EImagine(do=do, then=then):
             saved = PREFIX[:], CONTINUATION[:]

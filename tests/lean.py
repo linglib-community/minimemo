@@ -142,16 +142,23 @@ def source(raw, env, args_of, shown=None):
                 return {ARITHMETIC[op](*c) for c in itertools.islice(combos, 4097)}
         raise Unsupported("a function applied to something other than arithmetic on choices")
 
+    functions = {}  # each outside function, taking the arguments given by keyword last
     for _, ss, rets in parsed.values():
         for n in nodes([ss, rets]):
             if isinstance(n, EFFI):
-                slots = calls.setdefault(n.name, [set() for _ in n.args])
-                for slot, arg in zip(slots, n.args):
+                name, args = memo2lean.effective(n)
+                keys, base, k = list(n.kwargs), env[n.name], len(n.args)
+                functions[name] = (lambda *p, base=base, keys=keys, k=k:
+                                   base(*p[:k], **dict(zip(keys, p[k:]))))
+                slots = calls.setdefault(name, [set() for _ in args])
+                for slot, arg in zip(slots, args):
                     slot |= possible(arg)
     for name, slots in calls.items():
         point = [native(min(slot)) for slot in slots]
-        if numpy.asarray(env[name](*point)).dtype == bool:
+        if numpy.asarray(functions[name](*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
+    memo2lean.SIGNATURES = {name: (list(p[0].static_parameters), list(p[0].static_defaults))
+                            for name, p in parsed.items()}
 
     # the models, translated: the translation of `wants` adds agents and names of its own
     memo2lean.EXTRA_AGENTS.clear(); memo2lean.EXTRA_NAMES.clear()
@@ -185,7 +192,7 @@ def source(raw, env, args_of, shown=None):
         lean.append(f"  | .{d} => ⟨{len(values[d])}, fun j ↦ ([{vs}] : List {K}).getD j 0⟩")
     lean.append("")
     for name, slots in calls.items():
-        f = env[name]
+        f = functions[name]
         columns = [sorted(slot) for slot in slots]
         if numpy.prod([len(c) for c in columns]) > 4096:
             raise Unsupported("a function with too many values to list")
