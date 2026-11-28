@@ -168,7 +168,7 @@ theorem level_zero (β : ℝ) : level β 0 = arrayOf (1 / 2) := by
   show (Model.entries _ (model 0)).getD [] = _
   rw [Model.entries, program_zero]
   show (Listener.program weightTerm₀).entries _ = _
-  rw [Listener.entries_program (w := Listener.weight (fun _ ↦ 1) (arrayOf 0)) fun σ ↦ by
+  rw [Listener.entries_program (w := Listener.weight (fun _ ↦ 1) (arrayOf 0)) fun Φ σ ↦ by
       show _ * ((1 : ℚ) : ℝ) = _ * 1
       rw [Rat.cast_one]
       rfl,
@@ -185,7 +185,7 @@ theorem entries_model (β : ℝ) (below : ℕ → List ℝ) (t : ℕ) (p : ℝ) 
   rw [model_succ, Model.entries, program_one]
   show some ((Listener.program weightTerm).entries _) = _
   rw [Listener.entries_program (w := Listener.weight (fun x ↦ Real.exp (β * x)) (below t))
-      fun σ ↦ rfl, h,
+      fun Φ σ ↦ rfl, h,
     Listener.listener_weight (fun x ↦ Real.exp (β * x)) p (Real.exp_pos _) (Real.exp_pos _)
       (Real.exp_pos _)]
 

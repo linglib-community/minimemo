@@ -73,8 +73,7 @@ def size (n : ℕ) (i : ℕ) : ℕ := ([n, n] : List ℕ).getD i 1
 theorem denote_program (n : ℕ) (β : ℝ) (u : ℝ → ℝ) (σ : ℕ → ℕ) (h : σ 0 < n) :
     program.term.denote (.ofField (dom n) (call β u)) (size n) [fun _ ↦ 1] σ =
       Real.exp (β * u (σ 0)) / ∑ j ∈ Finset.range n, Real.exp (β * u j) := by
-  memo_unfold [program, call, dom]
-  rename_i f1 f2 h1 h2
+  memo_unfold [program, call, dom] with f1 h1, f2 h2
   simp only [h2, h1, size, List.getD_cons_zero, List.getD_cons_succ, Function.update, Nat.cast_inj,
     one_mul, ite_mul, zero_mul, ↓reduceDIte]
   simp [Finset.sum_ite_eq', h]

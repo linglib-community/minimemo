@@ -24,8 +24,9 @@ written once.
 
 ## Main definitions
 
-* `memo_unfold [lemmas]`: unfolds the meaning of a program, with the definitions of the program,
-  of its domains and of its outside functions as `lemmas`.
+* `memo_unfold [lemmas] with f₁ h₁, f₂ h₂, …`: unfolds the meaning of a program, with the
+  definitions of the program, of its domains and of its outside functions as `lemmas`, and names
+  the meaning of each table and the equation for it.
 
 ## Main results
 
@@ -83,15 +84,19 @@ theorem denote_letE_eq_of (a b : Term D F) (σ : ℕ → ℕ) (X : K)
     (Term.letE a b).denote (.ofField dom call) size Φ σ = X :=
   h _ fun _ ↦ rfl
 
-/-- Unfolds the meaning of a program into an equation for the meaning of each of its tables in
-terms of those before it. -/
-syntax "memo_unfold" (" [" Lean.Parser.Tactic.simpLemma,* "]")? : tactic
+/-- `memo_unfold [lemmas] with f₁ h₁, f₂ h₂, …` unfolds the meaning of a program into an equation
+for the meaning of each of its tables in terms of those before it: `fₖ` is the meaning of the
+table `k`, and `hₖ` the equation for it. The `lemmas` are the definitions of the program, of its
+domains and of its outside functions. -/
+syntax "memo_unfold" (" [" Lean.Parser.Tactic.simpLemma,* "]")? " with " (ident ident),+ : tactic
 macro_rules
-  | `(tactic| memo_unfold $[[$ls,*]]?) => do
+  | `(tactic| memo_unfold $[[$ls,*]]? with $[$fs $hs],*) => do
     let extra := (ls.map (·.getElems)).getD #[]
+    let steps ← (fs.zip hs).mapM fun (f, h) ↦
+      `(tactic| refine denote_letE_eq_of _ _ _ _ _ _ _ _ fun $f $h ↦ ?_)
     `(tactic| (
-      simp only [Program.term, List.foldr]
-      repeat (refine denote_letE_eq_of _ _ _ _ _ _ _ _ fun f h ↦ ?_)
+      simp only [Program.term, List.foldr, $extra,*]
+      $[$steps]*
       simp only [Term.chooses, Term.weighs, Term.observes, Term.forgets, Term.expect, Term.mul,
         Term.div, denote_app_prim, denote_app_fn, denote_ref, denote_sum, denote_rename,
         denote_lit, denote_val, sumList_singleton, sumList_nil, Prim.eval, List.getD_cons_zero,

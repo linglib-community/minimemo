@@ -6,7 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Examples.NaiveListener
-public import Minimemo.Theory.Denote
+public import Minimemo.Theory.Unfold
 public import Mathlib.Algebra.Order.Field.Basic
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.NormNum
@@ -96,48 +96,6 @@ variable (dom : Dom → Domain K) (call : {k : ℕ} → F k → (Fin k → K) �
 /-- The interpretation of the model: the given domains and outside functions. -/
 abbrev interp : Interp Dom F K := .ofField dom call
 
-/-- The meaning of the first table: the number one. -/
-def stage₀ : (ℕ → ℕ) → K := fun _ ↦ 1
-/-- The meaning of the table of `term₁`. -/
-def stage₁ := (term₁ : Term Dom F).denote (interp dom call) (size dom) [stage₀]
-/-- The meaning of the table of `term₂`. -/
-def stage₂ := (term₂ : Term Dom F).denote (interp dom call) (size dom) [stage₀, stage₁ dom call]
-/-- The meaning of the table of the weight. -/
-def stage₃ := wt.denote (interp dom call) (size dom) [stage₀, stage₁ dom call, stage₂ dom call]
-/-- The meaning of the table of `term₄`. -/
-def stage₄ := (term₄ : Term Dom F).denote (interp dom call) (size dom)
-  [stage₀, stage₁ dom call, stage₂ dom call, stage₃ dom call wt]
-/-- The meaning of the table of `term₅`. -/
-def stage₅ := (term₅ : Term Dom F).denote (interp dom call) (size dom)
-  [stage₀, stage₁ dom call, stage₂ dom call, stage₃ dom call wt, stage₄ dom call wt]
-/-- The meaning of the table of `term₆`. -/
-def stage₆ := (term₆ : Term Dom F).denote (interp dom call) (size dom)
-  [stage₀, stage₁ dom call, stage₂ dom call, stage₃ dom call wt, stage₄ dom call wt,
-    stage₅ dom call wt]
-/-- The meaning of the table of `term₇`. -/
-def stage₇ := (term₇ : Term Dom F).denote (interp dom call) (size dom)
-  [stage₀, stage₁ dom call, stage₂ dom call, stage₃ dom call wt, stage₄ dom call wt,
-    stage₅ dom call wt, stage₆ dom call wt]
-/-- The meaning of the returned term. -/
-def stageRet := (termRet : Term Dom F).denote (interp dom call) (size dom)
-  [stage₀, stage₁ dom call, stage₂ dom call, stage₃ dom call wt, stage₄ dom call wt,
-    stage₅ dom call wt, stage₆ dom call wt, stage₇ dom call wt]
-
-omit [IsStrictOrderedRing K] in
-theorem term_denote :
-    (program wt).term.denote (interp dom call) (size dom) [stage₀] = stageRet dom call wt := rfl
-
-omit [IsStrictOrderedRing K] in
-theorem stage₁_eq (σ) : stage₁ dom call σ = 1 := by
-  show ((1 : ℚ) : K) = 1
-  norm_num
-
-omit [IsStrictOrderedRing K] in
-theorem stage₂_eq (σ) : stage₂ dom call σ = 1 / (dom .R).size := by
-  show stage₀ σ * (stage₁ dom call σ /
-    ∑ j ∈ Finset.range (dom .R).size, stage₁ dom call (Function.update σ 2 j)) = _
-  simp [stage₁_eq, stage₀]
-
 -- the choice that the listener observes is read at the first axis
 omit [Field K] [LinearOrder K] [IsStrictOrderedRing K] in
 private theorem lookup_link (i : ℕ) :
@@ -149,57 +107,34 @@ private theorem lookup_link (i : ℕ) :
   · have : (i == 3) = false := by simpa using hi
     simp [List.filter, h, hi, this]
 
-variable {dom call wt} {w : ℕ → ℕ → K} (hw : ∀ σ, stage₃ dom call wt σ = w (σ 3) (σ 2))
-include hw
+variable {dom call wt} {w : ℕ → ℕ → K}
+  (hw : ∀ Φ σ, wt.denote (interp dom call) (size dom) Φ σ = w (σ 3) (σ 2))
+  (hR : ∀ j, (dom .R).val j = (j : K))
+include hw hR
 
-omit [IsStrictOrderedRing K] in
-theorem stage₄_eq (σ) :
-    stage₄ dom call wt σ = speaker (dom .U).size (dom .R).size w (σ 3) (σ 2) := by
-  show stage₂ dom call σ * (stage₃ dom call wt σ /
-    ∑ j ∈ Finset.range (dom .U).size, stage₃ dom call wt (Function.update σ 3 j)) = _
-  simp [stage₂_eq, hw, speaker, Function.update]
-
-omit [IsStrictOrderedRing K] in
-theorem stage₅_eq (σ) :
-    stage₅ dom call wt σ = posterior (dom .U).size (dom .R).size w (σ 3) (σ 2) := by
-  show stage₄ dom call wt σ /
-    ∑ j ∈ Finset.range (dom .R).size, stage₄ dom call wt (Function.update σ 2 j) = _
-  simp [stage₄_eq hw, posterior, Function.update]
-
-variable (hR : ∀ j, (dom .R).val j = (j : K))
-include hR
-
-theorem stage₆_eq (σ) (h : σ 4 < (dom .R).size) :
-    stage₆ dom call wt σ = posterior (dom .U).size (dom .R).size w (σ 0) (σ 4) := by
-  show ∑ j ∈ Finset.range (dom .R).size,
-    (if (dom .R).val (Function.update (fun i ↦ σ (((List.filter (fun l : ℕ × ℕ ↦
-        size dom l.1 == size dom l.2) [(3, 0)]).lookup i).getD i)) 2 j 2) =
-      (dom .R).val (Function.update (fun i ↦ σ (((List.filter (fun l : ℕ × ℕ ↦
-        size dom l.1 == size dom l.2) [(3, 0)]).lookup i).getD i)) 2 j 4) then 1 else 0) *
-    stage₅ dom call wt (Function.update (fun i ↦ σ (((List.filter (fun l : ℕ × ℕ ↦
-        size dom l.1 == size dom l.2) [(3, 0)]).lookup i).getD i)) 2 j) = _
-  simp only [lookup_link, stage₅_eq hw, hR, Function.update, Nat.cast_inj]
-  simp [Finset.sum_ite_eq', h, ite_mul]
-
-theorem stage₇_eq (σ) (h : σ 4 < (dom .R).size) :
-    stage₇ dom call wt σ = listener (dom .U).size (dom .R).size w (σ 0) (σ 4) := by
-  show stage₀ σ * (stage₆ dom call wt σ /
-    ∑ j ∈ Finset.range (dom .R).size, stage₆ dom call wt (Function.update σ 4 j)) = _
-  rw [stage₆_eq hw hR σ h, Finset.sum_congr rfl fun j hj ↦
-    stage₆_eq hw hR (Function.update σ 4 j) (by simpa using Finset.mem_range.1 hj)]
-  simp [stage₀, listener, Function.update]
-
-theorem stageRet_eq (σ) (h : σ 1 < (dom .R).size) :
-    stageRet dom call wt σ = listener (dom .U).size (dom .R).size w (σ 0) (σ 1) := by
-  show ∑ j ∈ Finset.range (dom .R).size,
-    (if (dom .R).val ((fun i ↦ Function.update σ 4 j (((List.filter (fun l : ℕ × ℕ ↦
-        size dom l.1 == size dom l.2) [(3, 0)]).lookup i).getD i)) 4) =
-      (dom .R).val (Function.update σ 4 j 1) then 1 else 0) *
-    stage₇ dom call wt (Function.update σ 4 j) = _
+/-- The meaning of the program: the probability that the listener chooses the referent of the
+second axis on hearing the utterance of the first. -/
+theorem denote_program (σ : ℕ → ℕ) (h : σ 1 < (dom .R).size) :
+    (program wt).term.denote (interp dom call) (size dom) [fun _ ↦ 1] σ =
+      listener (dom .U).size (dom .R).size w (σ 0) (σ 1) := by
+  memo_unfold [program, term₁, term₂, term₄, term₅, term₆, term₇, termRet, lookup_link, hw, hR]
+    with f₁ h₁, f₂ h₂, f₃ h₃, f₄ h₄, f₅ h₅, f₆ h₆, f₇ h₇
+  have e₂ (τ) : f₂ τ = 1 / (dom .R).size := by simp [h₂, h₁, size]
+  have e₄ (τ) : f₄ τ = speaker (dom .U).size (dom .R).size w (τ 3) (τ 2) := by
+    simp [h₄, e₂, h₃, speaker, size, Function.update]
+  have e₅ (τ) : f₅ τ = posterior (dom .U).size (dom .R).size w (τ 3) (τ 2) := by
+    simp [h₅, e₄, posterior, size, Function.update]
+  have e₆ (τ) (hτ : τ 4 < (dom .R).size) :
+      f₆ τ = posterior (dom .U).size (dom .R).size w (τ 0) (τ 4) := by
+    simp [h₆, e₅, size, Function.update, Finset.sum_ite_eq', hτ, ite_mul]
+  have e₇ (τ) (hτ : τ 4 < (dom .R).size) :
+      f₇ τ = listener (dom .U).size (dom .R).size w (τ 0) (τ 4) := by
+    rw [h₇, e₆ τ hτ, Finset.sum_congr rfl fun j hj ↦
+      e₆ (Function.update τ 4 j) (by simpa [size] using Finset.mem_range.1 hj)]
+    simp [listener, size, Function.update]
   rw [Finset.sum_congr rfl fun j hj ↦ by
-    rw [stage₇_eq hw hR (Function.update σ 4 j) (by simpa using Finset.mem_range.1 hj)]]
-  simp only [lookup_link, hR, Function.update, Nat.cast_inj]
-  simp [Finset.sum_ite_eq', h, ite_mul]
+    rw [e₇ (Function.update σ 4 j) (by simpa [size] using Finset.mem_range.1 hj)]]
+  simp [size, Function.update, Finset.sum_ite_eq', h, ite_mul]
 
 omit [IsStrictOrderedRing K] hw hR in
 theorem size_program : (program wt).size (interp dom call) = size dom := by
@@ -224,7 +159,7 @@ theorem get_table (a b : ℕ) (ha : a < (dom .U).size) (hb : b < (dom .R).size) 
     ((program wt).term.eval (interp dom call) (size dom) #[.const 1]).get (size dom)
       (Table.assign [0, 1] [a, b]) = listener (dom .U).size (dom .R).size w a b :=
   (Term.get_eval (program wt).term _ _ Env.one _ (inRange a b ha hb)).trans
-    (stageRet_eq hw hR _ hb)
+    (denote_program hw hR _ hb)
 
 omit hw hR
 
@@ -235,7 +170,8 @@ section Paper
 variable {call : {k : ℕ} → F k → (Fin k → K) → K} {wt : Term Dom F} {w : ℕ → ℕ → K}
 
 /-- The array of the program in the game of four utterances and three referents. -/
-theorem entries_program (hw : ∀ σ, stage₃ (domOf K) call wt σ = w (σ 3) (σ 2)) :
+theorem entries_program
+    (hw : ∀ Φ σ, wt.denote (interp (domOf K) call) (size (domOf K)) Φ σ = w (σ 3) (σ 2)) :
     (program wt).entries (interp (domOf K) call) =
     [listener 4 3 w 0 0, listener 4 3 w 0 1, listener 4 3 w 0 2, listener 4 3 w 1 0,
      listener 4 3 w 1 1, listener 4 3 w 1 2, listener 4 3 w 2 0, listener 4 3 w 2 1,

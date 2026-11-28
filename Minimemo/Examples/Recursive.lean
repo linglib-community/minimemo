@@ -140,7 +140,7 @@ theorem entries_model (below : ℕ → List ℚ) (t : ℕ) (p : ℚ) (h : below 
       (model (t + 1)) = some (arrayOf (2 * p / (3 * p + 1))) := by
   rw [model_succ, Model.entries, program_eq]
   show some ((Listener.program weightTerm).entries _) = _
-  rw [Listener.entries_program (w := Listener.weight id (below t)) fun σ ↦ rfl, h,
+  rw [Listener.entries_program (w := Listener.weight id (below t)) fun Φ σ ↦ rfl, h,
     Listener.listener_weight id p hp one_pos (by simpa using hp1)]
   simp
 
