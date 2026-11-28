@@ -11,7 +11,8 @@ from textwrap import indent
 import contextlib
 import dataclasses
 
-from memo.core import (EChoice, EExpect, EFFI, EImagine, EInline, ELit, EMemo, EOp, EPredict, EUtil,
+from memo.core import (EChoice, EEntropy, EExpect, EFFI, EImagine, EInline, EKL, ELit, EMemo, EOp,
+                       EPredict, EUtil,
                        EWith, Op, SChoose, SForAll, SForgetsAbout, SGuess, SKnows, SObserves,
                        SPass, SShow, SSnapshot, SWants, SWith)
 from memo.parse import parse_memo
@@ -23,6 +24,20 @@ SWAPPED = {Op.GT: "lt", Op.GTE: "le"}  # a > b is b < a
 UNARY = {Op.NEG: "neg", Op.ABS: "abs"}
 # Operators that are not rational: they are outside functions, with a meaning over the reals.
 OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow"}
+# Their numbers of arguments, with those of the terms of an entropy and of a divergence.
+OUTSIDE_ARITY = {"exp": 1, "log": 1, "rpow": 2, "negMulLog": 1, "klTerm": 2}
+
+
+def outside_of(n) -> str | None:
+    """The operator outside the rational numbers that a syntax node uses, if it uses one."""
+    match n:
+        case EOp(op=op) if op in OUTSIDE:
+            return OUTSIDE[op]
+        case EEntropy():
+            return "negMulLog"
+        case EKL():
+            return "klTerm"
+    return None
 
 
 # Where the translation is: the agents from the model, or from an `imagine`, down to the agent
@@ -242,6 +257,11 @@ def expr(e) -> str:
         case EWith(who=who, expr=inner):
             with frame(who):
                 return f".query .{ident(who)} ({expr(inner)})"
+        case EEntropy(rvs=rvs):
+            xs = ", ".join(f"({ref(who)}, .{ident(x)})" for who, x in rvs)
+            return f".entropy (.inr .negMulLog) [{xs}]"
+        case EKL(p_who=pw, p_id=px, q_who=qw, q_id=qx):
+            return f".divergence (.inr .klTerm) ({ref(pw)}, .{ident(px)}) ({ref(qw)}, .{ident(qx)})"
         case EPredict(expr=inner):
             return predict(inner)
         case EUtil(goal=goal):

@@ -68,7 +68,7 @@ mutual
 
 /-- The references in an expression. -/
 def Expr.refs : Expr A N D (Refs R F) → List R
-  | .lit _ | .choice _ => []
+  | .lit _ | .choice _ | .entropy .. | .divergence .. => []
   | .op (.inr (.inl r)) es => r :: (List.finRange _).flatMap fun i ↦ Expr.refs (es i)
   | .op _ es => (List.finRange _).flatMap fun i ↦ Expr.refs (es i)
   | .query _ e | .expect e => Expr.refs e

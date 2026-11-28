@@ -143,6 +143,10 @@ inductive Error (A N : Type u) : Type u
   /-- What the agent `α` answers, or the weight of its choice, depends on a choice that the mind
   asking has forgotten. -/
   | forgotten (α : A)
+  /-- An entropy or a divergence is taken of a choice that the mind is certain of. -/
+  | certainChoice (γ : Ref A) (x : N)
+  /-- A divergence is taken between a choice and one from another domain. -/
+  | differentDomains (γ : Ref A) (x : N)
   deriving DecidableEq, Repr
 
 /-- An optional value, or the error `e`. -/
@@ -152,7 +156,7 @@ mutual
 
 /-- The domains of the choices that an expression imagines, in the order of their numbers. -/
 def Expr.doms : Expr A N D F → List D
-  | .lit _ | .choice _ => []
+  | .lit _ | .choice _ | .entropy .. | .divergence .. => []
   | .op _ es => (List.finRange _).flatMap fun i ↦ Expr.doms (es i)
   | .query _ e | .expect e => Expr.doms e
   | .imagine s e => Stmt.doms s ++ Expr.doms e
@@ -222,6 +226,24 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) :
     let (t, deps) ← Expr.term e S g
     if deps.all (· ∈ S.certain) then pure (t, deps)
     else pure (Term.expect S.table S.uncertain t, S.certain)
+  | .entropy h xs => do
+    let cs ← xs.mapM fun x ↦ orError (S.entries.lookup x) (.unknownChoice x.1 x.2)
+    match (xs.zip cs).find? fun p ↦ p.2.certain with
+    | some p => .error (.certainChoice p.1.1 p.1.2)
+    | none =>
+      let over := (cs.map (·.index)).dedup
+      let marginal : Term D F := .sum (S.uncertain.filter (· ∉ over)) (.ref S.table)
+      pure (.sum over (.app (.inr h) [marginal]), S.certain)
+  | .divergence d p q => do
+    let cp ← orError (S.entries.lookup p) (.unknownChoice p.1 p.2)
+    let cq ← orError (S.entries.lookup q) (.unknownChoice q.1 q.2)
+    if cp.certain then .error (.certainChoice p.1 p.2)
+    else if cq.certain then .error (.certainChoice q.1 q.2)
+    else if cp.dom ≠ cq.dom then .error (.differentDomains p.1 p.2)
+    else
+      let of (i : ℕ) : Term D F := .sum (S.uncertain.filter (· ≠ i)) (.ref S.table)
+      pure (.sum [cp.index]
+        (.app (.inr d) [of cp.index, .rename [(cq.index, cp.index)] (of cq.index)]), S.certain)
   | .imagine s e => do
     let (S', g') ← Stmt.steps s S g
     let (t, deps) ← Expr.term e S' g'

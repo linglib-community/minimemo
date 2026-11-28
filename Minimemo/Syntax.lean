@@ -73,6 +73,10 @@ inductive Exp : ℕ → Type
   | log : Exp 1
   /-- The power `a ** b`. -/
   | rpow : Exp 2
+  /-- The term `-p * log p` of an entropy, which is zero at zero. -/
+  | negMulLog : Exp 1
+  /-- The term `a * log (a / b)` of a divergence, which is zero where `a` is zero. -/
+  | klTerm : Exp 2
   deriving DecidableEq, Repr
 
 /-- The **operators** of memo, by their number of arguments. A test has the value one when it
@@ -121,6 +125,13 @@ inductive Expr (A N D : Type u) (F : ℕ → Type u) : Type u
   | expect (e : Expr A N D F)
   /-- The hypothetical `imagine[s, e]`: the value of `e` if the statement `s` were to happen. -/
   | imagine (s : Stmt A N D F) (e : Expr A N D F)
+  /-- The sum, over the values of the choices `xs` that the current agent is uncertain of, of the
+  outside function `h` of their probability. With `h p = -p * log p` this is the entropy `H[xs]`. -/
+  | entropy (h : F 1) (xs : List (Ref A × N))
+  /-- The sum, over the values of the choice `p`, of the outside function `d` of the probability
+  of `p` and the probability that the choice `q` has that value. With `d a b = a * log (a / b)`
+  this is the divergence `KL[p | q]`. -/
+  | divergence (d : F 2) (p q : Ref A × N)
 
 /-- A **statement** of memo changes the frames of mind of the agents. -/
 inductive Stmt (A N D : Type u) (F : ℕ → Type u) : Type u

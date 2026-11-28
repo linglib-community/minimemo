@@ -17,6 +17,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 from memo import codegen
 
 import memo2lean
+from memo.parse import parse_memo
 from memo2lean import Unsupported, model
 
 seen = []
@@ -70,6 +71,14 @@ def main() -> None:
         made = [vars(v) for v in scope.values() if isinstance(v, types.ModuleType)
                 and getattr(v, "__file__", None) is None]
         memo2lean.INLINE_ENV = {k: v for d in made + [scope] for k, v in d.items()}
+        memo2lean.SIGNATURES = {}
+        for f in seen:
+            try:
+                ctxt = parse_memo(f)[0]
+                memo2lean.SIGNATURES[f.__name__] = (list(ctxt.static_parameters),
+                                                   list(ctxt.static_defaults))
+            except Exception:
+                pass
         ok, bad = 0, collections.Counter()
         for f in seen:
             try:

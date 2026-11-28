@@ -85,8 +85,8 @@ def source(raw, env, args_of, shown=None):
     shown = raw if shown is None else shown
     memo2lean.BOOLEAN_FUNCTIONS.clear()
     # a model with an exponential has no rational array, and is run in floating point
-    outside = sorted({memo2lean.OUTSIDE[n.op] for _, ss, rets in parsed.values()
-                      for n in nodes([ss, rets]) if isinstance(n, EOp) and n.op in memo2lean.OUTSIDE})
+    outside = sorted({memo2lean.outside_of(n) for _, ss, rets in parsed.values()
+                      for n in nodes([ss, rets])} - {None})
     K, num = ("Float", flt) if outside else ("ℚ", rat)
     agents, names, domain_of, calls, referenced = [], [], {}, {}, []
 
@@ -177,7 +177,7 @@ def source(raw, env, args_of, shown=None):
 
     # the outside functions of the models, and an index for each model with its parameters
     fns = [f"  | {ident(name)} : Fn {len(slots)}" for name, slots in calls.items()]
-    fns += [f"  | {name} : Fn {2 if name == 'rpow' else 1}" for name in outside]
+    fns += [f"  | {name} : Fn {memo2lean.OUTSIDE_ARITY[name]}" for name in outside]
     indices = [f"  | {ident(name)}{''.join(f' ({p} : ℚ)' for p in params(name))}" for name in parsed]
     lean = ["import Minimemo", "import Mathlib.Algebra.Order.Field.Rat", "",
             "open Memo", "open scoped Memo", "",
