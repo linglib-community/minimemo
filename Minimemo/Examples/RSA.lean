@@ -6,6 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Examples.Listener
+public import Minimemo.Theory.Family
 public import Minimemo.Theory.Kernel
 public import Mathlib.Analysis.SpecialFunctions.Exp
 public import Mathlib.Topology.Order.MonotoneConvergence
@@ -167,7 +168,8 @@ theorem model_succ (t : ℕ) : model (t + 1) = model 1 := by
 theorem level_zero (β : ℝ) : level β 0 = arrayOf (1 / 2) := by
   show (Model.entries _ (model 0)).getD [] = _
   rw [Model.entries, program_zero]
-  show (Listener.program weightTerm₀).entries _ = _
+  show (Listener.program weightTerm₀).entries
+    (Listener.interp (domOf ℝ) (family.call (domOf ℝ) (callOf β) _ 0)) = _
   rw [Listener.entries_program (w := Listener.weight (fun _ ↦ 1) (arrayOf 0)) fun Φ σ ↦ by
       show _ * ((1 : ℚ) : ℝ) = _ * 1
       rw [Rat.cast_one]
@@ -191,20 +193,15 @@ theorem entries_model (β : ℝ) (below : ℕ → List ℝ) (t : ℕ) (p : ℝ) 
 
 theorem refs_one : (model 1).refs = [()] := by decide
 
+theorem refs_succ (t : ℕ) : (family.model (t + 1)).refs = [()] := by
+  rw [show family.model (t + 1) = model (t + 1) from rfl, model_succ]
+  exact refs_one
+
 /-- The array at a depth above zero is the array of the model over the array one depth below. -/
 theorem level_succ (β : ℝ) (t : ℕ) :
-    level β (t + 1) = (Model.entries (.ofField (domOf ℝ)
-      (family.call (domOf ℝ) (callOf β) (fun q ↦ if q = t then level β t else []) (t + 1)))
-      (model (t + 1))).getD [] := by
-  have hb : (fun q ↦ (((model (t + 1)).refs.map fun r ↦ (family.target (t + 1) r,
-      family.entries .ofField (domOf ℝ) (callOf β) (t + 1) (family.target (t + 1) r))).lookup
-        q).getD []) = fun q ↦ if q = t then level β t else [] := by
-    funext q
-    rw [model_succ, refs_one]
-    have hq : (q == t) = decide (q = t) := rfl
-    by_cases h : q = t <;> simp [List.lookup, family, level, hq, h]
-  rw [← hb]
-  rfl
+    ∃ below : ℕ → List ℝ, below t = level β t ∧ level β (t + 1) = (Model.entries (.ofField (domOf ℝ)
+      (family.call (domOf ℝ) (callOf β) below (t + 1))) (model (t + 1))).getD [] :=
+  family.entries_of_refs_eq_singleton .ofField (domOf ℝ) (callOf β) (refs_succ t) (t + 1)
 
 end Step
 
@@ -213,7 +210,8 @@ theorem level_eq (β : ℝ) (t : ℕ) : level β t = arrayOf (prob β t) := by
   induction t with
   | zero => exact level_zero β
   | succ t ih =>
-    rw [level_succ, entries_model β _ t _ (by simpa using ih), Option.getD_some, prob]
+    obtain ⟨below, hb, he⟩ := level_succ β t
+    rw [he, entries_model β below t _ (hb.trans ih), Option.getD_some, prob]
 
 /-- On hearing *green*, the listener at depth `t` gives the green square the probability
 `prob β t`. -/
