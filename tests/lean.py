@@ -1,6 +1,7 @@
 """Run memo models in Lean, and compare the arrays with those of memo."""
 import dataclasses
 import itertools
+import operator
 import pathlib
 import re
 import subprocess
@@ -11,7 +12,7 @@ import numpy
 from memo import memo
 from memo.lib import Bool
 from memo.core import MemoError
-from memo.core import (EChoice, EFFI, EMemo, EOp, EWith, SChoose, SForAll, SKnows, SShow, SSnapshot,
+from memo.core import (EChoice, EFFI, EInline, ELit, EMemo, EOp, EWith, Op, SChoose, SForAll, SKnows, SShow, SSnapshot,
                        SWith)
 from memo.parse import parse_memo
 
@@ -41,6 +42,15 @@ def nodes(x):
 def rat(x) -> str:
     q = Fraction(float(x))
     return str(q.numerator) if q.denominator == 1 else f"({q.numerator} / {q.denominator})"
+
+
+ARITHMETIC = {Op.ADD: operator.add, Op.SUB: operator.sub, Op.MUL: operator.mul,
+              Op.DIV: operator.truediv, Op.NEG: operator.neg, Op.UADD: operator.pos}
+
+
+def native(v):
+    """A value as memo's own functions take it: a whole number as an integer."""
+    return int(v) if float(v) == int(v) else float(v)
 
 
 def bars(names) -> str:
@@ -107,20 +117,39 @@ def source(raw, env, args_of, shown=None):
                     add(referenced, m)
                     for _, who, _ in ids:
                         add(agents, who)
+    domains = sorted({d for ds in domain_of.values() for d in ds})
+    env = {"Bool": Bool} | dict(env)  # memo's own domain of the two truth values
+    memo2lean.INLINE_ENV = env
+    values = {d: [number(v) for v in env[d]] for d in domains}
+    # a table has an entry for each joint value of its choices, so large domains are not run
+    if any(len(vs) > 64 for vs in values.values()):
+        raise Unsupported("a domain with more than 64 values")
+    exact = (lambda v: v) if outside else (lambda v: Fraction(float(v)))
+
+    def possible(e) -> set:
+        """The values that an argument of an outside function can take."""
+        match e:
+            case EChoice(id=x):
+                return {exact(v) for d in domain_of[x] for v in values[d]}
+            case EWith(expr=inner):
+                return possible(inner)
+            case ELit(value=v) if not isinstance(v, str):
+                return {exact(v)}
+            case EInline(val=v):
+                return {exact(number(eval(v, dict(env))))}
+            case EOp(op=op, args=args) if op in ARITHMETIC:
+                combos = itertools.product(*map(possible, args))
+                return {ARITHMETIC[op](*c) for c in itertools.islice(combos, 4097)}
+        raise Unsupported("a function applied to something other than arithmetic on choices")
+
     for _, ss, rets in parsed.values():
         for n in nodes([ss, rets]):
             if isinstance(n, EFFI):
                 slots = calls.setdefault(n.name, [set() for _ in n.args])
                 for slot, arg in zip(slots, n.args):
-                    slot |= domain_of[choice_name(arg)]
-    domains = sorted({d for ds in domain_of.values() for d in ds})
-    env = {"Bool": Bool} | dict(env)  # memo's own domain of the two truth values
-    values = {d: [number(v) for v in env[d]] for d in domains}
-    # a table has an entry for each joint value of its choices, so large domains are not run
-    if any(len(vs) > 64 for vs in values.values()):
-        raise Unsupported("a domain with more than 64 values")
+                    slot |= possible(arg)
     for name, slots in calls.items():
-        point = [values[sorted(slot)[0]][0] for slot in slots]
+        point = [native(min(slot)) for slot in slots]
         if numpy.asarray(env[name](*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
@@ -151,11 +180,12 @@ def source(raw, env, args_of, shown=None):
     lean.append("")
     for name, slots in calls.items():
         f = env[name]
-        columns = [sorted({v for d in slot for v in values[d]}) for slot in slots]
+        columns = [sorted(slot) for slot in slots]
         if numpy.prod([len(c) for c in columns]) > 4096:
             raise Unsupported("a function with too many values to list")
         points = itertools.product(*columns)
-        rows = ", ".join(f"([{', '.join(num(v) for v in p)}], {num(number(f(*p)))})" for p in points)
+        rows = ", ".join(f"([{', '.join(num(v) for v in p)}], {num(number(f(*map(native, p))))})"
+                         for p in points)
         args = " ".join(f"a{i}" for i in range(len(slots)))
         binder = f" ({args} : {K})" if slots else ""
         lean += [f"def {ident(name)}{binder} : {K} :=",

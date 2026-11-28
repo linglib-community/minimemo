@@ -8,7 +8,7 @@ Uses memo's own parser, so memo must be installed.
 from fractions import Fraction
 from textwrap import indent
 
-from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith, Op, SChoose,
+from memo.core import (EChoice, EExpect, EFFI, EImagine, EInline, ELit, EMemo, EOp, EWith, Op, SChoose,
                        SForAll, SForgetsAbout, SKnows, SObserves, SShow, SSnapshot, SWith)
 from memo.parse import parse_memo
 
@@ -20,6 +20,9 @@ UNARY = {Op.NEG: "neg", Op.ABS: "abs"}
 # Operators that are not rational: they are outside functions, with a meaning over the reals.
 OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow"}
 
+
+# The names that a Python expression in braces may use: the module of the model.
+INLINE_ENV: dict = {}
 
 # Names of foreign functions that return booleans. memo adds two booleans as "or".
 BOOLEAN_FUNCTIONS: set[str] = set()
@@ -130,6 +133,12 @@ def expr(e) -> str:
             return prim(f"(.pow {n})", [expr(a)])
         case EOp(op=Op.UADD, args=[a]):
             return expr(a)
+        case EOp(op=Op.INV, args=[a]):  # memo's `not`: true where the number is zero
+            return prim(".eq", [expr(a), ".lit 0"])
+        case EOp(op=Op.XOR, args=[a, b]) if is_boolean(a) and is_boolean(b):
+            return prim(".ne", [expr(a), expr(b)])
+        case EInline(val=val):  # a Python expression in braces: a constant of the model
+            return lit(float(eval(val, dict(INLINE_ENV))))
         case EOp(op=op, args=[a]) if op in UNARY:
             return prim("." + UNARY[op], [expr(a)])
         case EOp(op=Op.ITE, args=[c, a, b]) if is_static(c):
