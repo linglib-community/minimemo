@@ -16,7 +16,7 @@ import numpy
 from memo.core import (EChoice, EEntropy, EExpect, EFFI, EImagine, EInline, EKL, ELit, EMemo, EOp,
                        EPredict, EUtil,
                        EWith, Op, SChoose, SForAll, SForgetsAbout, SGuess, SKnows, SObserves,
-                       SPass, SShow, SSnapshot, SVariant, SWants, SWith)
+                       SPass, SShow, SSnapshot, STrace, SVariant, SWants, SWith)
 from memo.parse import parse_memo
 
 # The operators of memo that minimemo has, by the name of the constructor of `Memo.Prim`.
@@ -176,8 +176,14 @@ KEYWORDS = {"at", "by", "do", "else", "end", "from", "fun", "have", "if", "in", 
 
 
 def ident(name: str) -> str:
-    head, *rest = name.split("_")
-    out = head + "".join(word[:1].upper() + word[1:] for word in rest)
+    """A name of memo as a name of Lean: `r_true` is `rTrue`. Underscores at the end become
+    primes, so that `n` and `n_` stay two names."""
+    body = name.rstrip("_")
+    primes = "'" * (len(name) - len(body))
+    if not body or body.startswith("_") or "__" in body:
+        return f"«{name}»"
+    head, *rest = body.split("_")
+    out = head + "".join(word[:1].upper() + word[1:] for word in rest) + primes
     return f"«{out}»" if out in KEYWORDS else out
 
 
@@ -387,7 +393,7 @@ def stmt(s) -> str:
 
 def stmt_in(s) -> str:
     match s:
-        case SPass():
+        case SPass() | STrace():  # `trace` prints what an agent has, and changes nothing
             return ".pass"
         case SVariant(who=who, variant=variant):
             return f".variant .{ident(who)} .{VARIANTS[variant.name]}"

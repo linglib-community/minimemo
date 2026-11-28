@@ -116,8 +116,11 @@ def check(i: int, t: Test) -> tuple[str, str]:
         return "skipped", "too slow"
     except RuntimeError as e:
         return "differs", "Lean does not accept the file: " + str(e).strip().split("\n")[0][:80]
-    ok, why = verdict(name, iter(results), iter(reasons),
-                      None if t.outcome == "ce" else t.out, sizes)
+    try:
+        ok, why = verdict(name, iter(results), iter(reasons),
+                          None if t.outcome == "ce" else t.out, sizes)
+    except Exception as e:  # what Lean printed is not an array for each value returned
+        return "differs", f"Lean's output was not read: {type(e).__name__}"
     return ("ok" if ok else "differs"), why
 
 

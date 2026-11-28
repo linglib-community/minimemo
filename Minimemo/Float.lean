@@ -33,7 +33,7 @@ def Prim.float : {k : ℕ} → Prim k → (Fin k → Float) → Float
   | _, .add, v => v 0 + v 1
   | _, .sub, v => v 0 - v 1
   | _, .mul, v => v 0 * v 1
-  | _, .div, v => v 0 / v 1
+  | _, .div, v => if v 1 == 0 then 0 else v 0 / v 1  -- as in a field, where `x / 0 = 0`
   | _, .eq, v => if v 0 == v 1 then 1 else 0
   | _, .ne, v => if v 0 == v 1 then 0 else 1
   | _, .lt, v => if v 0 < v 1 then 1 else 0

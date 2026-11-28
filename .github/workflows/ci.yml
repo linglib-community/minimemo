@@ -29,3 +29,5 @@ jobs:
           pytest
       - name: report on memo's demos
         run: python scripts/demos.py "$PWD/memo-src/demo"
+      - name: compare with memo on the models of its demos
+        run: python scripts/demos_agree.py "$PWD/memo-src/demo"

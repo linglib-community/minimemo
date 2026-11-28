@@ -2,8 +2,10 @@
 import dataclasses
 import itertools
 import operator
+import os
 import pathlib
 import re
+import signal
 import subprocess
 import sys
 from fractions import Fraction
@@ -261,13 +263,17 @@ def source(raw, env, args_of, shown=None):
     lean += ["  target _ r := r", "",
              f"def interp (p : Ix) : Interp Dom (Refs Ix Fn) {K} :=",
              f"  {of} dom (fam.call dom call (fam.entries {of} dom call {DEPTH}) p)", ""]
+    # an array is printed as text: Lean's own display of a long list of numbers can fail
+    lean += [f"def render : Option (List {K}) → String",
+             '  | some l => "some [" ++ ", ".intercalate (l.map toString) ++ "]"',
+             '  | none => "none"', ""]
     given = {f.__name__: [rat(a) for a, p in zip(args_of.get(f.__name__, ()),
                                                  parsed[f.__name__][0].static_parameters)
                           if p not in parsed[f.__name__][0].exotic_parameters] for f in shown}
     shown_names = [(f.__name__, n) for f in shown for n in each(f.__name__)]
     for name, n in shown_names:
         m = applied(n, given[name])
-        lean.append(f"#eval Model.entries (interp (.{m})) ({m})")
+        lean.append(f"#eval IO.println (render (Model.entries (interp (.{m})) ({m})))")
     lean.append('#eval "errors"')
     for name, n in shown_names:  # why each model is not accepted, if it is not
         lean.append(f"#eval Model.error ({applied(n, given[name])})")
@@ -281,11 +287,20 @@ def run(text, path, timeout=None):
     model shown, the entries of its array or `None`, and the reason or `None`."""
     path.parent.mkdir(exist_ok=True, parents=True)
     path.write_text(text)
-    done = subprocess.run(["lake", "env", "lean", str(path)], cwd=ROOT, capture_output=True,
-                          text=True, timeout=timeout)
-    if done.returncode != 0:
-        raise RuntimeError(done.stdout + done.stderr)
-    arrays, _, errors = done.stdout.partition('"errors"')
+    # Lean runs in a process group of its own, so that when time runs out all of it is stopped:
+    # stopping `lake` alone leaves the `lean` that it started running
+    proc = subprocess.Popen(["lake", "env", "lean", str(path)], cwd=ROOT, text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            start_new_session=True)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        raise
+    if proc.returncode != 0:
+        raise RuntimeError(out + err)
+    arrays, _, errors = out.partition('"errors"')
     results = [None if none else
                [float(Fraction(*map(int, e.replace(" ", "").split("/")))) if "/" in e else float(e)
                 for e in entries.split(",")]
