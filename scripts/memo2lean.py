@@ -8,8 +8,12 @@ Uses memo's own parser, so memo must be installed.
 from fractions import Fraction
 from textwrap import indent
 
-from memo.core import (EChoice, EExpect, EFFI, EImagine, EInline, ELit, EMemo, EOp, EWith, Op, SChoose,
-                       SForAll, SForgetsAbout, SKnows, SObserves, SShow, SSnapshot, SWith)
+import contextlib
+import dataclasses
+
+from memo.core import (EChoice, EExpect, EFFI, EImagine, EInline, ELit, EMemo, EOp, EPredict, EUtil,
+                       EWith, Op, SChoose, SForAll, SForgetsAbout, SGuess, SKnows, SObserves,
+                       SPass, SShow, SSnapshot, SWants, SWith)
 from memo.parse import parse_memo
 
 # The operators of memo that minimemo has, by the name of the constructor of `Memo.Prim`.
@@ -19,6 +23,77 @@ SWAPPED = {Op.GT: "lt", Op.GTE: "le"}  # a > b is b < a
 UNARY = {Op.NEG: "neg", Op.ABS: "abs"}
 # Operators that are not rational: they are outside functions, with a meaning over the reals.
 OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow"}
+
+
+# Where the translation is: the agents from the model, or from an `imagine`, down to the agent
+# whose mind an expression is read in, and the statements that follow the current one. memo's
+# `Predict` and `wants` are defined from these.
+PREFIX: list[str] = []
+CONTINUATION: list = []
+# The goals that each agent wants, by name; the domain of each choice; the agents and the names
+# of choices that the translation adds.
+GOALS: dict[str, dict] = {}
+DOMAIN: dict[str, str] = {}
+EXTRA_AGENTS: list[str] = []
+EXTRA_NAMES: list[str] = []
+
+
+@contextlib.contextmanager
+def frame(who: str):
+    """Translate inside the mind of the agent `who`."""
+    PREFIX.append(who)
+    try:
+        yield
+    finally:
+        PREFIX.pop()
+
+
+def fresh(base: str, used: list[str]) -> str:
+    name = f"{base}_{len(used) + 1}"
+    used.append(name)
+    return name
+
+
+def predict(e) -> str:
+    """memo's `Predict[e]`: the agent imagines a copy of itself that makes the statements that
+    follow, and expects `e` of the copy. The construction is memo's own, in `core.py`."""
+    if not PREFIX:
+        raise Unsupported("a prediction by the model itself")
+    me = PREFIX[-1]
+    future = fresh(f"future_{me}", EXTRA_AGENTS)
+    GOALS[future] = dict(GOALS.get(me, {}))
+    todo = []
+    for s in CONTINUATION:
+        for who in PREFIX[:-1]:
+            if isinstance(s, SWith) and s.who == who:
+                s = s.stmt
+            else:
+                break
+        else:
+            if isinstance(s, SForAll):
+                raise Unsupported("an axis after a prediction")
+            if isinstance(s, SPass):
+                todo.append(s)
+            elif getattr(s, "who", None) == me:
+                if isinstance(s, SKnows):
+                    raise Unsupported("a `knows` after a prediction")
+                if isinstance(s, SShow):
+                    guess = fresh(s.target_id, EXTRA_NAMES)
+                    DOMAIN[guess] = DOMAIN[s.target_id]
+                    todo.append(SGuess(future, guess, s.target_who, s.target_id, loc=s.loc))
+                    s = dataclasses.replace(s, source_who=future, source_id=guess)
+                todo.append(dataclasses.replace(s, who=future))
+    saved = PREFIX[:], CONTINUATION[:]
+    PREFIX.clear()
+    try:
+        body = stmts(todo)
+        CONTINUATION.clear()
+        with frame(future):
+            then = expr(e)
+    finally:
+        PREFIX[:], CONTINUATION[:] = saved
+    first = f".snapshot .self .{ident(future)}"
+    return f".imagine ({first} ;;\n{indent(body, '  ')}) (.expect (.query .{ident(future)} ({then})))"
 
 
 # The names that a Python expression in braces may use: the module of the model.
@@ -40,6 +115,20 @@ def is_boolean(e) -> bool:
         case ELit(value=bool()):
             return True
     return False
+
+
+def nodes(x):
+    """Every syntax node inside `x`."""
+    if dataclasses.is_dataclass(x) and not isinstance(x, type):
+        yield x
+        for f in dataclasses.fields(x):
+            yield from nodes(getattr(x, f.name))
+    elif isinstance(x, (list, tuple)):
+        for y in x:
+            yield from nodes(y)
+    elif isinstance(x, dict):
+        for y in x.values():
+            yield from nodes(y)
 
 
 class Unsupported(Exception):
@@ -122,7 +211,14 @@ def expr(e) -> str:
         case EChoice(id=name):
             return f".choice .{ident(name)}"
         case EWith(who=who, expr=inner):
-            return f".query .{ident(who)} ({expr(inner)})"
+            with frame(who):
+                return f".query .{ident(who)} ({expr(inner)})"
+        case EPredict(expr=inner):
+            return predict(inner)
+        case EUtil(goal=goal):
+            if not PREFIX or goal not in GOALS.get(PREFIX[-1], {}):
+                raise Unsupported("a goal that the agent does not have")
+            return predict(GOALS[PREFIX[-1]][goal])
         case EExpect(expr=inner, reduction="expectation"):
             return f".expect ({expr(inner)})"
         case EExpect(expr=inner, reduction="variance"):
@@ -160,7 +256,15 @@ def expr(e) -> str:
             head = ident(name) + "".join(f" {static(a)}" for a in args)
             return f".ref (.{head}) ![{', '.join(choice(who, c) for (_, who, c) in ids)}]"
         case EImagine(do=do, then=then):
-            return f".imagine ({stmts(do)}) ({expr(then)})"
+            saved = PREFIX[:], CONTINUATION[:]
+            PREFIX.clear()
+            try:
+                body = stmts(do)
+                if do:
+                    CONTINUATION.clear()
+                return f".imagine ({body}) ({expr(then)})"
+            finally:
+                PREFIX[:], CONTINUATION[:] = saved
     raise Unsupported(type(e).__name__)
 
 
@@ -169,7 +273,26 @@ def ref(who: str) -> str:
 
 
 def stmt(s) -> str:
+    who = getattr(s, "who", None)
+    if isinstance(s, (SChoose, SObserves, SWith)):
+        with frame(who):
+            return stmt_in(s)
+    return stmt_in(s)
+
+
+def stmt_in(s) -> str:
     match s:
+        case SPass():
+            return ".pass"
+        case SWants(who=who, what=what, how=how):  # a goal is used where the agent refers to it
+            GOALS.setdefault(who, {})[what] = EExpect(how, reduction="expectation", warn=False,
+                                                     loc=s.loc, static=False)
+            return ".pass"
+        case SGuess(who=who, id=name, target_who=b, target_id=x):
+            with frame(who):
+                same = prim(".eq", [f".choice .{ident(name)}",
+                                    f".query .{ident(b)} (.choice .{ident(x)})"])
+            return f".chooses .{ident(who)} .{ident(name)} .{DOMAIN[x]}\n  (.expect ({same}))"
         case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="normalize"):
             head = f".chooses .{ident(who)} .{ident(name)} .{domain}"
             weight = f"({expr(wpp)})"
@@ -182,7 +305,7 @@ def stmt(s) -> str:
         case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="maximize"):
             return f".choosesMax .{ident(who)} .{ident(name)} .{domain}\n  ({expr(wpp)})"
         case SSnapshot(who=who, alias=alias):
-            return f".snapshot .{ident(who)} .{ident(alias)}"
+            return f".snapshot (.agent .{ident(who)}) .{ident(alias)}"
         case SForgetsAbout(who=who, ids=ids):
             return f".forgets .{ident(who)} [{', '.join('.' + ident(x) for x in ids)}]"
         case SObserves(who=who, what=what, how="probability"):
@@ -204,10 +327,15 @@ def stmts(ss) -> str:
             j = i
             while j < len(ss) and isinstance(ss[j], SWith) and ss[j].who == ss[i].who:
                 j += 1
-            inner = " ;;\n".join(stmt(s.stmt) for s in ss[i:j])
-            out.append(f".thinks .{ident(ss[i].who)}\n" + indent(f"({inner})", "  "))
+            inner = []
+            for k in range(i, j):
+                CONTINUATION[:] = ss[k + 1:]
+                with frame(ss[i].who):
+                    inner.append(stmt(ss[k].stmt))
+            out.append(f".thinks .{ident(ss[i].who)}\n" + indent("(" + " ;;\n".join(inner) + ")", "  "))
             i = j
         else:
+            CONTINUATION[:] = ss[i + 1:]
             out.append(stmt(ss[i]))
             i += 1
     return " ;;\n".join(out) if out else ".pass"
@@ -219,6 +347,13 @@ def model(f, name: str | None = None) -> str:
     binder = f" ({params} : ℚ)" if params else ""
     if len(rets) != 1:
         raise Unsupported("a model with several return values")
+    PREFIX.clear(); CONTINUATION.clear(); GOALS.clear()
+    for n in nodes([ss, rets]):
+        match n:
+            case SForAll(id=x, domain=d):
+                DOMAIN[x] = d
+            case SChoose(choices=cs):
+                DOMAIN.update(cs)
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
     return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"

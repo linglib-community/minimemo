@@ -137,8 +137,9 @@ inductive Stmt (A N D : Type u) (F : ℕ → Type u) : Type u
   `X` uniformly among the values at which `e` is greatest. -/
   | choosesMax (α : A) (x : N) (X : D) (e : Expr A N D F)
   /-- The statement `α: snapshots_self_as(β)`: the agent `α` gets a model of an agent `β` that is a
-  copy of `α` as it is now. -/
-  | snapshot (α β : A)
+  copy of `α` as it is now. With `.self` for `α`, the mind itself gets the copy: an agent who
+  imagines its own future starts from one. -/
+  | snapshot (α : Ref A) (β : A)
   /-- The statement `α: forgets_about(x, y)`: the agent `α` no longer has the choices `xs`, and
   the current agent no longer follows them. -/
   | forgets (α : A) (xs : List N)

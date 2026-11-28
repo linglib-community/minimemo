@@ -279,14 +279,18 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     | .agent β =>
       pure (S.setAgent α
         ((Sα.insert (.agent β, y) c').setAgent β ((Sα.agent β).insert (.self, y) c')), g)
-  | .snapshot α β =>
-    let Sα := S.agent α
+  | .snapshot γ β =>
+    let Sα := match γ with
+      | .self => S
+      | .agent α => S.agent α
     let Sβ : Scope A N D :=
       { Sα with entries := Sα.entries.map fun p ↦ (p.1, { p.2 with given := true }), links := [] }
     let Sα' := Sα.entries.foldl
       (fun S p ↦ if p.1.1 = .self then S.insert (.agent β, p.1.2) { p.2 with given := true }
         else S) Sα
-    .ok (S.setAgent α (Sα'.setAgent β Sβ), g)
+    match γ with
+    | .self => .ok (Sα'.setAgent β Sβ, g)
+    | .agent α => .ok (S.setAgent α (Sα'.setAgent β Sβ), g)
   | .forgets α xs => do
     let Sα := S.agent α
     match xs.find? fun x ↦ !((Sα.entries.lookup (.self, x)).any (!·.given) &&

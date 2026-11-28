@@ -153,6 +153,12 @@ def source(raw, env, args_of, shown=None):
         if numpy.asarray(env[name](*point)).dtype == bool:
             memo2lean.BOOLEAN_FUNCTIONS.add(name)
 
+    # the models, translated: the translation of `wants` adds agents and names of its own
+    memo2lean.EXTRA_AGENTS.clear(); memo2lean.EXTRA_NAMES.clear()
+    texts = [model(f) for f in raw]
+    agents += memo2lean.EXTRA_AGENTS
+    names += memo2lean.EXTRA_NAMES
+
     def axes_of(name):
         return [s.domain for s in parsed[name][1] if isinstance(s, SForAll)]
 
@@ -191,7 +197,7 @@ def source(raw, env, args_of, shown=None):
         lean += [f"def {ident(name)}{binder} : {K} :=",
                  f"  (List.lookup [{', '.join(args.split())}] "
                  f"([{rows}] : List (List {K} × {K}))).getD 0", ""]
-    lean += [model(f) for f in raw]
+    lean += texts
     of = ".ofFloat" if outside else ".ofField"
     if calls or outside:
         lean.append(f"def call : {{k : ℕ}} → Fn k → (Fin k → {K}) → {K}")
