@@ -9,3 +9,4 @@ public import Minimemo.Examples.Real
 public import Minimemo.Examples.Listener
 public import Minimemo.Examples.Recursive
 public import Minimemo.Examples.RSA
+public import Minimemo.Examples.Softmax
