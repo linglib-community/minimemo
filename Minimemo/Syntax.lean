@@ -110,6 +110,13 @@ inductive Prim : ℕ → Type
   | ite : Prim 3
   deriving DecidableEq
 
+/-- A **variant** of memo is the language without some of its statements. A mind with the variant
+`child` or `noThinks` has no `thinks`, one with `noKnows` no `knows`, and one with `noWants` no
+`wants`. A mind has the variant of the mind that models it, unless it is given another. -/
+inductive Variant
+  | adult | child | noThinks | noKnows | noWants
+  deriving DecidableEq, Repr
+
 mutual
 
 /-- An **expression** of memo denotes a number that depends on choices. -/
@@ -153,6 +160,8 @@ inductive Stmt (A N D : Type u) (F : ℕ → Type u) : Type u
   copy of `α` as it is now. With `.self` for `α`, the mind itself gets the copy: an agent who
   imagines its own future starts from one. -/
   | snapshot (α : Ref A) (β : A)
+  /-- The statement `α: has_theory(v)`: the mind of the agent `α` has the variant `v`. -/
+  | variant (α : A) (v : Variant)
   /-- The statement `α: forgets_about(x, y)`: the agent `α` no longer has the choices `xs`, and
   the current agent no longer follows them. -/
   | forgets (α : A) (xs : List N)
@@ -194,5 +203,7 @@ structure Model (A N D : Type u) (F : ℕ → Type u) where
   body : Stmt A N D F
   /-- The expression that the model returns. -/
   ret : Expr A N D F
+  /-- The variant of memo that the model is written in. -/
+  variant : Variant := .adult
 
 end Memo

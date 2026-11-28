@@ -14,7 +14,7 @@ import dataclasses
 from memo.core import (EChoice, EEntropy, EExpect, EFFI, EImagine, EInline, EKL, ELit, EMemo, EOp,
                        EPredict, EUtil,
                        EWith, Op, SChoose, SForAll, SForgetsAbout, SGuess, SKnows, SObserves,
-                       SPass, SShow, SSnapshot, SWants, SWith)
+                       SPass, SShow, SSnapshot, SVariant, SWants, SWith)
 from memo.parse import parse_memo
 
 # The operators of memo that minimemo has, by the name of the constructor of `Memo.Prim`.
@@ -51,6 +51,10 @@ GOALS: dict[str, dict] = {}
 DOMAIN: dict[str, str] = {}
 SIGNATURES: dict[str, tuple[list, list]] = {}  # the parameters and defaults of each model
 RETURNS: dict[str, int] = {}  # how many values each model returns
+# The variant of memo that each model is written in, by the name of the model, and Lean's names.
+ROOT_VARIANT: dict[str, str] = {}
+VARIANTS = {"ADULT": "adult", "CHILD": "child", "NO_THINKS": "noThinks", "NO_KNOWS": "noKnows",
+            "NO_WANTS": "noWants"}
 
 
 def def_names(name: str, count: int | None = None) -> list[str]:
@@ -351,6 +355,8 @@ def stmt_in(s) -> str:
     match s:
         case SPass():
             return ".pass"
+        case SVariant(who=who, variant=variant):
+            return f".variant .{ident(who)} .{VARIANTS[variant.name]}"
         case SWants(who=who, what=what, how=how):  # a goal is used where the agent refers to it
             GOALS.setdefault(who, {})[what] = EExpect(how, reduction="expectation", warn=False,
                                                      loc=s.loc, static=False)
@@ -422,7 +428,9 @@ def model(f, name: str | None = None) -> str:
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
     PREFIX.clear(); CONTINUATION.clear()
+    variant = ROOT_VARIANT.get(name or f.__name__)
+    variant = f"  variant := .{VARIANTS[variant]}\n" if variant else ""
     return "\n".join(
         f"def {ident(n)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"
-        f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(ret)}\n"
+        f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(ret)}\n{variant}"
         for n, ret in zip(def_names(name or f.__name__, len(rets)), rets))

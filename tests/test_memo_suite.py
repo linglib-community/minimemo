@@ -21,6 +21,7 @@ from memo.core import EMemo, MemoError
 from memo.parse import parse_memo
 
 from lean import ROOT, nodes, run, source, verdict
+import memo2lean
 from memo2lean import Unsupported
 
 
@@ -51,8 +52,10 @@ def memo_test(mod, expect="pass", item=None, *args, **kwargs):
             outcome = "ce"
         except Exception:
             outcome = "re"
-        # a test that memo fails to run, or one of a variant of memo, has nothing to compare
-        if outcome == expect != "re" and "variant" not in kwargs:
+        # a test that memo fails to run has nothing to compare
+        if "variant" in kwargs:
+            memo2lean.ROOT_VARIANT[f.__name__] = kwargs["variant"].name
+        if outcome == expect != "re":
             tests.append(Test(f, dict(known), mod, outcome, out, args))
         known[f.__name__] = f
         return getattr(mod, f.__name__, None)

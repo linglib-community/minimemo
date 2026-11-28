@@ -66,6 +66,8 @@ structure Scope (A N D : Type u) : Type u where
   agents : A → Option (Scope A N D)
   /-- The observed choices, each with the choice outside that it equals. -/
   links : List (ℕ × ℕ)
+  /-- The variant of memo that the mind has. -/
+  variant : Variant := .adult
 
 /-- The next free number of a choice and the steps so far. -/
 structure Gen (D : Type u) (F : ℕ → Type u) : Type u where
@@ -105,7 +107,7 @@ def erase (S : Scope A N D) (as : List (Ref A × N)) : Scope A N D :=
 /-- The scope of the agent `α` in a scope. An agent of whom nothing was said has the empty scope,
 whose belief is the table `0`. -/
 def agent (S : Scope A N D) (α : A) : Scope A N D :=
-  (S.agents α).getD ⟨0, [], fun _ ↦ none, []⟩
+  (S.agents α).getD ⟨0, [], fun _ ↦ none, [], S.variant⟩
 
 /-- The scope in which the scope of the agent `α` is `Sα`. -/
 def setAgent (S : Scope A N D) (α : A) (Sα : Scope A N D) : Scope A N D :=
@@ -147,6 +149,8 @@ inductive Error (A N : Type u) : Type u
   | certainChoice (γ : Ref A) (x : N)
   /-- A divergence is taken between a choice and one from another domain. -/
   | differentDomains (γ : Ref A) (x : N)
+  /-- A statement about the agent `α` is not in the variant of memo that the mind has. -/
+  | notInVariant (α : A)
   deriving DecidableEq, Repr
 
 /-- An optional value, or the error `e`. -/
@@ -169,7 +173,7 @@ def Stmt.doms : Stmt A N D F → List D
   | .observesEvent _ e => Expr.doms e
   | .thinks _ s => Stmt.doms s
   | .seq s₁ s₂ => Stmt.doms s₁ ++ Stmt.doms s₂
-  | .observes .. | .knows .. | .snapshot .. | .forgets .. | .pass => []
+  | .observes .. | .knows .. | .snapshot .. | .variant .. | .forgets .. | .pass => []
 
 end
 
@@ -262,8 +266,10 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     let (S', g') ← Stmt.steps s₁ S g
     Stmt.steps s₂ S' g'
   | .thinks α s => do
+    if S.variant = .child ∨ S.variant = .noThinks then .error (.notInVariant α) else
     let (Sα, g') ← Stmt.steps s (S.agent α) g
     pure (S.setAgent α Sα, g')
+  | .variant α v => pure (S.setAgent α { S.agent α with variant := v }, g)
   | .chooses α x X e =>
     choose S g α [(x, X)] id (Expr.doms e).length
       (Expr.term e ((S.agent α).own [(x, X)] g.next) { g with next := g.next + 1 })
@@ -293,6 +299,7 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     pure (S.setAgent α { Sα with table := w' },
       { g'' with next := g.next + (Expr.doms e).length })
   | .knows α γ y => do
+    if S.variant = .noKnows then .error (.notInVariant α) else
     let c ← orError (S.entries.lookup (γ, y)) (.unknownChoice γ y)
     let Sα := S.agent α
     let c' : Entry D := { c with certain := true, given := true }
@@ -333,7 +340,8 @@ only. -/
 def Model.program (M : Model A N D F) : Except (Error A N) (Program D F) := do
   let k := M.axes.length
   let S₀ : Scope A N D :=
-    ⟨0, M.axes.zipIdx.map fun p ↦ ((.self, p.1.1), ⟨p.2, p.1.2, true, false⟩), fun _ ↦ none, []⟩
+    ⟨0, M.axes.zipIdx.map fun p ↦ ((.self, p.1.1), ⟨p.2, p.1.2, true, false⟩), fun _ ↦ none, [],
+      M.variant⟩
   let (S, g) ← Stmt.steps M.body S₀ ⟨k, #[]⟩
   let (t, deps) ← Expr.term M.ret S g
   if deps.all (· < k) then
