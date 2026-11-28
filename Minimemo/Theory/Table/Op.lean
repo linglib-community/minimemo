@@ -6,29 +6,22 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Theory.Table.Get
-public import Minimemo.Theory.Factor
+public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 public import Mathlib.Tactic.SplitIfs
 
 /-!
-# Tables as factors
+# The numbers of the tables that the operations build
 
-This file proves that the operations on stored tables compute the operations on factors.
-
-An assignment of a position below its size to every variable is a choice of a value for every
-choice, so a table gives a factor, `Memo.Table.toFactor`. The table that combines tables with an
-operator gives the operator applied to their factors, and the sum of a table over a list of
-variables gives the sum of its factor over those choices.
-
-## Main definitions
-
-* `Memo.Table.toFactor size t`: the factor of the table `t`.
+This file proves what number each operation on stored tables puts at an assignment: the table
+that combines tables with an operator has the operator applied to their numbers, the table with
+variables replaced reads the table at the replaced assignment, and the table summed over a
+variable has the sum of the numbers over its positions.
 
 ## Main results
 
-* `Memo.Table.get_op`, `Memo.Table.get_sumOut`, `Memo.Table.get_rename`: the numbers of the tables
-  that the operations build.
-* `Memo.Table.toFactor_op`: the factor of a combination of tables.
-* `Memo.Table.toFactor_sumOver`: the factor of a sum over a list of variables.
+* `Memo.Table.get_op`, `Memo.Table.get_rename`, `Memo.Table.get_sumOut`: the numbers of the
+  tables that the operations build.
+* `Memo.Table.get_congr`: a table has the same number at assignments that agree on its variables.
 -/
 
 @[expose] public section
@@ -132,70 +125,5 @@ theorem get_sumOut (i : ℕ) (t : Table K) (hσ : ∀ i, σ i < size i) :
     rfl
 
 end Sum
-
-section Factor
-
-variable [Semifield K]
-
-/-- The **factor of a table**: its number at each assignment of a position below its size to every
-variable. -/
-def toFactor (size : ℕ → ℕ) (t : Table K) : Factor (fun i ↦ Fin (size i)) K :=
-  fun σ ↦ t.get size fun i ↦ σ i
-
-/-- The factor of the table of a number is that number. -/
-@[simp] theorem toFactor_const (k : K) (σ : ∀ i, Fin (size i)) :
-    toFactor size (const k) σ = k := by
-  simp [toFactor, get, const, index]
-
-/-- The factor of the table that combines tables with `f` is `f` at their factors. -/
-theorem toFactor_op {k : ℕ} (f : (Fin k → K) → K) (ts : Fin k → Table K)
-    (σ : ∀ i, Fin (size i)) :
-    toFactor size (op size f ts) σ = f fun i ↦ toFactor size (ts i) σ :=
-  get_op f ts fun i ↦ (σ i).isLt
-
-/-- The factor of the sum of a table over a variable is the sum of its factor over that choice. -/
-theorem toFactor_sumOut (i : ℕ) (t : Table K) :
-    toFactor size (t.sumOut size i) = (toFactor size t).sumOver {i} := by
-  funext σ
-  simp only [toFactor, Factor.sumOver]
-  rw [get_sumOut i t fun k ↦ (σ k).isLt,
-    ← Fin.sum_univ_eq_sum_range (fun j ↦ t.get size (Function.update (fun k ↦ (σ k : ℕ)) i j))
-      (size i)]
-  refine Fintype.sum_equiv (Equiv.piUnique (fun j : ({i} : Finset ℕ) ↦ Fin (size j))).symm _ _ ?_
-  intro x
-  congr 1
-  funext k
-  by_cases h : k = i
-  · subst h
-    have hx : ∀ j : ({k} : Finset ℕ),
-        ((uniqueElim x : ∀ j : ({k} : Finset ℕ), Fin (size j)) j : ℕ) = x := by
-      intro j
-      obtain rfl : j = default := Subsingleton.elim _ _
-      rw [uniqueElim_default]
-    simpa [Function.updateFinset] using (hx _).symm
-  · simp [Function.updateFinset, h]
-
-/-- The factor of the sum of a table over a list of distinct variables is the sum of its factor
-over those choices. -/
-theorem toFactor_sumOver (I : List ℕ) (hI : I.Nodup) (t : Table K) :
-    toFactor size (t.sumOver size I) = (toFactor size t).sumOver I.toFinset := by
-  induction I generalizing t with
-  | nil => simp [Table.sumOver]
-  | cons i I ih =>
-    have hd : Disjoint I.toFinset {i} := by simpa using (List.nodup_cons.1 hI).1
-    have h := ih (List.nodup_cons.1 hI).2 (t.sumOut size i)
-    rw [toFactor_sumOut, ← Factor.sumOver_union hd] at h
-    rw [List.toFinset_cons, Finset.insert_eq, Finset.union_comm]
-    exact h
-
-/-- The factor of a table does not depend on a choice that is not a variable of the table. -/
-theorem toFactor_updateFinset_singleton {t : Table K} {i : ℕ} (hi : i ∉ t.vars)
-    (σ : ∀ i, Fin (size i)) (τ : ∀ j : ({i} : Finset ℕ), Fin (size j)) :
-    toFactor size t (Function.updateFinset σ {i} τ) = toFactor size t σ := by
-  refine t.get_congr fun v hv ↦ ?_
-  have hne : v ≠ i := fun h ↦ hi (h ▸ hv)
-  simp [Function.updateFinset, hne]
-
-end Factor
 
 end Memo.Table

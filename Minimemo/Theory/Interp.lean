@@ -20,7 +20,6 @@ the order.
 
 ## Main definitions
 
-* `Memo.Interp.Arith I`: the interpretation `I` gives the product and the quotient their meaning.
 * `Memo.Interp.Compat φ I J`: the interpretations `I` and `J` are compatible along `φ`.
 
 ## Main results
@@ -35,16 +34,6 @@ universe u
 namespace Memo
 
 variable {D : Type u} {F : ℕ → Type u} {K L : Type u}
-
-/-- An interpretation gives the product and the quotient their meaning. -/
-structure Interp.Arith [Semifield K] (J : Interp D F K) : Prop where
-  mul : ∀ x : Fin 2 → K, J.op (.inl .mul) x = x 0 * x 1
-  div : ∀ x : Fin 2 → K, J.op (.inl .div) x = x 0 / x 1
-
-/-- The interpretation in an ordered field gives the product and the quotient their meaning. -/
-theorem Interp.arith_ofField [Field K] [LinearOrder K] (dom : D → Domain K)
-    (call : {k : ℕ} → F k → (Fin k → K) → K) : (Interp.ofField dom call).Arith :=
-  ⟨fun _ ↦ rfl, fun _ ↦ rfl⟩
 
 /-- Two interpretations are **compatible** along `φ` if their domains have the same sizes, and the
 values, the operators and the literals of the second are the images of those of the first. -/

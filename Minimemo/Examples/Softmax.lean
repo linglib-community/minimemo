@@ -6,6 +6,7 @@ Authors: Robert Hawkins
 module
 
 public import Minimemo.Theory.Unfold
+public import Mathlib.Algebra.BigOperators.Group.Finset.Piecewise
 public import Mathlib.Analysis.SpecialFunctions.Exp
 
 /-!

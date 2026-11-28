@@ -7,6 +7,7 @@ module
 
 public import Minimemo.Examples.NaiveListener
 public import Minimemo.Theory.Unfold
+public import Mathlib.Algebra.BigOperators.Group.Finset.Piecewise
 public import Mathlib.Algebra.Order.Field.Basic
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.NormNum
