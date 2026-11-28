@@ -8,8 +8,15 @@ Uses memo's own parser, so memo must be installed.
 from fractions import Fraction
 from textwrap import indent
 
-from memo.core import (EChoice, EExpect, EFFI, EImagine, ELit, EMemo, EOp, EWith, Op, SChoose,
-                       SForAll, SForgetsAbout, SKnows, SObserves, SShow, SSnapshot, SWith)
+import contextlib
+import dataclasses
+
+import numpy
+
+from memo.core import (EChoice, EEntropy, EExpect, EFFI, EImagine, EInline, EKL, ELit, EMemo, EOp,
+                       EPredict, EUtil,
+                       EWith, Op, SChoose, SForAll, SForgetsAbout, SGuess, SKnows, SObserves,
+                       SPass, SShow, SSnapshot, STrace, SVariant, SWants, SWith)
 from memo.parse import parse_memo
 
 # The operators of memo that minimemo has, by the name of the constructor of `Memo.Prim`.
@@ -18,8 +25,111 @@ BINARY = {Op.ADD: "add", Op.SUB: "sub", Op.MUL: "mul", Op.DIV: "div", Op.EQ: "eq
 SWAPPED = {Op.GT: "lt", Op.GTE: "le"}  # a > b is b < a
 UNARY = {Op.NEG: "neg", Op.ABS: "abs"}
 # Operators that are not rational: they are outside functions, with a meaning over the reals.
-OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow"}
+OUTSIDE = {Op.EXP: "exp", Op.LOG: "log", Op.POW: "rpow", Op.MOD: "mod"}
+# Their numbers of arguments, with those of the terms of an entropy and of a divergence.
+OUTSIDE_ARITY = {"exp": 1, "log": 1, "rpow": 2, "mod": 2, "negMulLog": 1, "klTerm": 2}
 
+
+def outside_of(n) -> str | None:
+    """The operator outside the rational numbers that a syntax node uses, if it uses one."""
+    match n:
+        case EOp(op=op) if op in OUTSIDE:
+            return OUTSIDE[op]
+        case EEntropy():
+            return "negMulLog"
+        case EKL():
+            return "klTerm"
+    return None
+
+
+# Where the translation is: the agents from the model, or from an `imagine`, down to the agent
+# whose mind an expression is read in, and the statements that follow the current one. memo's
+# `Predict` and `wants` are defined from these.
+PREFIX: list[str] = []
+CONTINUATION: list = []
+# The goals that each agent wants, by name; the domain of each choice; the agents and the names
+# of choices that the translation adds.
+GOALS: dict[str, dict] = {}
+DOMAIN: dict[str, str] = {}
+SIGNATURES: dict[str, tuple[list, list]] = {}  # the parameters and defaults of each model
+RETURNS: dict[str, int] = {}  # how many values each model returns
+EXOTIC: dict[str, set] = {}  # the parameters of each model that hold arrays
+EXOTIC_HERE: set = set()  # those of the model that is being translated
+BOUND_IDS: dict[str, int] = {}  # a number for each Python expression whose value is an array
+# The variant of memo that each model is written in, by the name of the model, and Lean's names.
+ROOT_VARIANT: dict[str, str] = {}
+VARIANTS = {"ADULT": "adult", "CHILD": "child", "NO_THINKS": "noThinks", "NO_KNOWS": "noKnows",
+            "NO_WANTS": "noWants"}
+
+
+def def_names(name: str, count: int | None = None) -> list[str]:
+    """The names of the Lean models of a memo model: one for each value that it returns."""
+    count = RETURNS.get(name, 1) if count is None else count
+    return [name] if count == 1 else [f"{name}_r{k}" for k in range(count)]
+EXTRA_AGENTS: list[str] = []
+EXTRA_NAMES: list[str] = []
+
+
+@contextlib.contextmanager
+def frame(who: str):
+    """Translate inside the mind of the agent `who`."""
+    PREFIX.append(who)
+    try:
+        yield
+    finally:
+        PREFIX.pop()
+
+
+def fresh(base: str, used: list[str]) -> str:
+    name = f"{base}_{len(used) + 1}"
+    used.append(name)
+    return name
+
+
+def predict(e) -> str:
+    """memo's `Predict[e]`: the agent imagines a copy of itself that makes the statements that
+    follow, and expects `e` of the copy. The construction is memo's own, in `core.py`."""
+    if not PREFIX:
+        raise Unsupported("a prediction by the model itself")
+    me = PREFIX[-1]
+    future = fresh(f"future_{me}", EXTRA_AGENTS)
+    GOALS[future] = dict(GOALS.get(me, {}))
+    todo = []
+    for s in CONTINUATION:
+        for who in PREFIX[:-1]:
+            if isinstance(s, SWith) and s.who == who:
+                s = s.stmt
+            else:
+                break
+        else:
+            if isinstance(s, SForAll):
+                raise Unsupported("an axis after a prediction")
+            if isinstance(s, SPass):
+                todo.append(s)
+            elif getattr(s, "who", None) == me:
+                if isinstance(s, SKnows):
+                    raise Rejected("a `knows` after a prediction")
+                if isinstance(s, SShow):
+                    guess = fresh(s.target_id, EXTRA_NAMES)
+                    DOMAIN[guess] = DOMAIN[s.target_id]
+                    todo.append(SGuess(future, guess, s.target_who, s.target_id, loc=s.loc))
+                    s = dataclasses.replace(s, source_who=future, source_id=guess)
+                todo.append(dataclasses.replace(s, who=future))
+    saved = PREFIX[:], CONTINUATION[:]
+    PREFIX.clear()
+    try:
+        body = stmts(todo)
+        CONTINUATION.clear()
+        with frame(future):
+            then = expr(e)
+    finally:
+        PREFIX[:], CONTINUATION[:] = saved
+    first = f".snapshot .self .{ident(future)}"
+    return f".imagine ({first} ;;\n{indent(body, '  ')}) (.expect (.query .{ident(future)} ({then})))"
+
+
+# The names that a Python expression in braces may use: the module of the model.
+INLINE_ENV: dict = {}
 
 # Names of foreign functions that return booleans. memo adds two booleans as "or".
 BOOLEAN_FUNCTIONS: set[str] = set()
@@ -32,11 +142,29 @@ def is_boolean(e) -> bool:
             return True
         case EOp(op=Op.ADD | Op.MUL, args=[a, b]):
             return is_boolean(a) and is_boolean(b)
-        case EFFI(name=name):
-            return name in BOOLEAN_FUNCTIONS
+        case EFFI():
+            return effective(e)[0] in BOOLEAN_FUNCTIONS
         case ELit(value=bool()):
             return True
     return False
+
+
+def nodes(x):
+    """Every syntax node inside `x`."""
+    if dataclasses.is_dataclass(x) and not isinstance(x, type):
+        yield x
+        for f in dataclasses.fields(x):
+            yield from nodes(getattr(x, f.name))
+    elif isinstance(x, (list, tuple)):
+        for y in x:
+            yield from nodes(y)
+    elif isinstance(x, dict):
+        for y in x.values():
+            yield from nodes(y)
+
+
+class Rejected(Exception):
+    """The model is one that memo does not accept, for a reason that the translation finds."""
 
 
 class Unsupported(Exception):
@@ -48,8 +176,14 @@ KEYWORDS = {"at", "by", "do", "else", "end", "from", "fun", "have", "if", "in", 
 
 
 def ident(name: str) -> str:
-    head, *rest = name.split("_")
-    out = head + "".join(word[:1].upper() + word[1:] for word in rest)
+    """A name of memo as a name of Lean: `r_true` is `rTrue`. Underscores at the end become
+    primes, so that `n` and `n_` stay two names."""
+    body = name.rstrip("_")
+    primes = "'" * (len(name) - len(body))
+    if not body or body.startswith("_") or "__" in body:
+        return f"«{name}»"
+    head, *rest = body.split("_")
+    out = head + "".join(word[:1].upper() + word[1:] for word in rest) + primes
     return f"«{out}»" if out in KEYWORDS else out
 
 
@@ -99,7 +233,66 @@ def static_test(e) -> str:
     match e:
         case EOp(op=op, args=[a, b]) if op in STATIC_TEST:
             return f"{static(a)} {STATIC_TEST[op]} {static(b)}"
-    raise Unsupported("a test on parameters that is not a comparison")
+        case EOp(op=Op.AND, args=[a, b]):
+            return f"({static_test(a)} ∧ {static_test(b)})"
+        case EOp(op=Op.OR, args=[a, b]):
+            return f"({static_test(a)} ∨ {static_test(b)})"
+        case EOp(op=Op.INV, args=[a]):
+            return f"¬ {static_test(a)}"
+    return f"{static(e)} ≠ 0"  # a number is taken as true when it is not zero
+
+
+def bound(arg) -> str | None:
+    """What an argument of an outside function is fixed to, if it is not a number: the name of a
+    parameter that holds an array, or a Python expression in braces whose value is an array."""
+    match arg:
+        case ELit(value=str(name)) if name in EXOTIC_HERE:
+            return name
+        case EInline(val=val) if numpy.ndim(eval(val, dict(INLINE_ENV))) > 0:
+            return val
+    return None
+
+
+def effective(e) -> tuple[str, list]:
+    """An outside function with its arguments in order. Arguments given by keyword follow the
+    others, and their keywords are part of the name: the function is a different one with them.
+    An argument that is an array is fixed, and the function is the one with it fixed."""
+    name = e.name if not e.kwargs else e.name + "__" + "_".join(e.kwargs)
+    args = list(e.args) + list(e.kwargs.values())
+    fixed = [(i, bound(a)) for i, a in enumerate(args) if bound(a) is not None]
+    for i, what in fixed:
+        key = what if what in EXOTIC_HERE else f"array{BOUND_IDS.setdefault(what, len(BOUND_IDS))}"
+        name += f"__at{i}_{key}"
+    return name, [a for a in args if bound(a) is None]
+
+
+def bindings(e) -> dict[int, str]:
+    """The arguments of an outside function that are fixed, by position, as `bound` gives them."""
+    args = list(e.args) + list(e.kwargs.values())
+    return {i: bound(a) for i, a in enumerate(args) if bound(a) is not None}
+
+
+def reference_args(name: str, args: list, kwargs: dict) -> list[str]:
+    """The parameters of a model that is referred to, in the order of the model: those given in
+    order, then each of the rest by its keyword or by its default."""
+    if name not in SIGNATURES:
+        if kwargs:
+            raise Unsupported("a reference by keyword to a model that is not a memo model")
+        return [static(a) for a in args]
+    params, defaults = SIGNATURES[name]
+    exotic = EXOTIC.get(name, set())  # a parameter that holds an array is not passed on in Lean
+    out = [static(a) for param, a in zip(params, args) if param not in exotic]
+    for param, default in list(zip(params, defaults))[len(args):]:
+        if param in exotic:
+            continue
+        if param in kwargs:
+            out.append(static(kwargs[param]))
+        elif default is not None:
+            q = Fraction(float(eval(default, dict(INLINE_ENV))))
+            out.append(str(q.numerator) if q.denominator == 1 and q >= 0 else f"({q})")
+        else:
+            raise Unsupported("a reference to a model that leaves a parameter out")
+    return out
 
 
 def prim(name: str, args: list[str]) -> str:
@@ -119,7 +312,19 @@ def expr(e) -> str:
         case EChoice(id=name):
             return f".choice .{ident(name)}"
         case EWith(who=who, expr=inner):
-            return f".query .{ident(who)} ({expr(inner)})"
+            with frame(who):
+                return f".query .{ident(who)} ({expr(inner)})"
+        case EEntropy(rvs=rvs):
+            xs = ", ".join(f"({ref(who)}, .{ident(x)})" for who, x in rvs)
+            return f".entropy (.inr .negMulLog) [{xs}]"
+        case EKL(p_who=pw, p_id=px, q_who=qw, q_id=qx):
+            return f".divergence (.inr .klTerm) ({ref(pw)}, .{ident(px)}) ({ref(qw)}, .{ident(qx)})"
+        case EPredict(expr=inner):
+            return predict(inner)
+        case EUtil(goal=goal):
+            if not PREFIX or goal not in GOALS.get(PREFIX[-1], {}):
+                raise Rejected("a goal that the agent does not have")
+            return predict(GOALS[PREFIX[-1]][goal])
         case EExpect(expr=inner, reduction="expectation"):
             return f".expect ({expr(inner)})"
         case EExpect(expr=inner, reduction="variance"):
@@ -130,6 +335,12 @@ def expr(e) -> str:
             return prim(f"(.pow {n})", [expr(a)])
         case EOp(op=Op.UADD, args=[a]):
             return expr(a)
+        case EOp(op=Op.INV, args=[a]):  # memo's `not`: true where the number is zero
+            return prim(".eq", [expr(a), ".lit 0"])
+        case EOp(op=Op.XOR, args=[a, b]) if is_boolean(a) and is_boolean(b):
+            return prim(".ne", [expr(a), expr(b)])
+        case EInline(val=val):  # a Python expression in braces: a constant of the model
+            return lit(float(eval(val, dict(INLINE_ENV))))
         case EOp(op=op, args=[a]) if op in UNARY:
             return prim("." + UNARY[op], [expr(a)])
         case EOp(op=Op.ITE, args=[c, a, b]) if is_static(c):
@@ -145,13 +356,26 @@ def expr(e) -> str:
             return prim("." + SWAPPED[op], [expr(b), expr(a)])
         case EOp(op=op, args=args) if op in OUTSIDE:
             return call(OUTSIDE[op], [expr(a) for a in args])
-        case EFFI(name=name, args=args, kwargs=kwargs) if not kwargs:
+        case EFFI():
+            name, args = effective(e)
             return call(ident(name), [expr(a) for a in args])
-        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs) if not kwargs:
-            head = ident(name) + "".join(f" {static(a)}" for a in args)
+        case EMemo(name=name, args=args, ids=ids, kwargs=kwargs, which_retval=which):
+            count = RETURNS.get(name, 1)
+            if (which is None) != (count == 1) or (which or 0) >= count:
+                raise Unsupported("a reference to a value that the model does not return")
+            head = ident(def_names(name)[which or 0]) + "".join(
+                f" {a}" for a in reference_args(name, args, kwargs))
             return f".ref (.{head}) ![{', '.join(choice(who, c) for (_, who, c) in ids)}]"
         case EImagine(do=do, then=then):
-            return f".imagine ({stmts(do)}) ({expr(then)})"
+            saved = PREFIX[:], CONTINUATION[:]
+            PREFIX.clear()
+            try:
+                body = stmts(do)
+                if do:
+                    CONTINUATION.clear()
+                return f".imagine ({body}) ({expr(then)})"
+            finally:
+                PREFIX[:], CONTINUATION[:] = saved
     raise Unsupported(type(e).__name__)
 
 
@@ -160,7 +384,28 @@ def ref(who: str) -> str:
 
 
 def stmt(s) -> str:
+    who = getattr(s, "who", None)
+    if isinstance(s, (SChoose, SObserves, SWith)):
+        with frame(who):
+            return stmt_in(s)
+    return stmt_in(s)
+
+
+def stmt_in(s) -> str:
     match s:
+        case SPass() | STrace():  # `trace` prints what an agent has, and changes nothing
+            return ".pass"
+        case SVariant(who=who, variant=variant):
+            return f".variant .{ident(who)} .{VARIANTS[variant.name]}"
+        case SWants(who=who, what=what, how=how):  # a goal is used where the agent refers to it
+            GOALS.setdefault(who, {})[what] = EExpect(how, reduction="expectation", warn=False,
+                                                     loc=s.loc, static=False)
+            return ".pass"
+        case SGuess(who=who, id=name, target_who=b, target_id=x):
+            with frame(who):
+                same = prim(".eq", [f".choice .{ident(name)}",
+                                    f".query .{ident(b)} (.choice .{ident(x)})"])
+            return f".chooses .{ident(who)} .{ident(name)} .{DOMAIN[x]}\n  (.expect ({same}))"
         case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="normalize"):
             head = f".chooses .{ident(who)} .{ident(name)} .{domain}"
             weight = f"({expr(wpp)})"
@@ -170,10 +415,13 @@ def stmt(s) -> str:
         case SChoose(who=who, choices=choices, wpp=wpp, reduction="normalize"):
             xs = ", ".join(f"(.{ident(x)}, .{d})" for x, d in choices)
             return f".choosesMany .{ident(who)} [{xs}]\n  ({expr(wpp)})"
+        case SChoose(who=who, choices=choices, wpp=wpp, reduction="maximize") if len(choices) > 1:
+            xs = ", ".join(f"(.{ident(x)}, .{d})" for x, d in choices)
+            return f".choosesManyMax .{ident(who)} [{xs}]\n  ({expr(wpp)})"
         case SChoose(who=who, choices=[(name, domain)], wpp=wpp, reduction="maximize"):
             return f".choosesMax .{ident(who)} .{ident(name)} .{domain}\n  ({expr(wpp)})"
         case SSnapshot(who=who, alias=alias):
-            return f".snapshot .{ident(who)} .{ident(alias)}"
+            return f".snapshot (.agent .{ident(who)}) .{ident(alias)}"
         case SForgetsAbout(who=who, ids=ids):
             return f".forgets .{ident(who)} [{', '.join('.' + ident(x) for x in ids)}]"
         case SObserves(who=who, what=what, how="probability"):
@@ -195,10 +443,15 @@ def stmts(ss) -> str:
             j = i
             while j < len(ss) and isinstance(ss[j], SWith) and ss[j].who == ss[i].who:
                 j += 1
-            inner = " ;;\n".join(stmt(s.stmt) for s in ss[i:j])
-            out.append(f".thinks .{ident(ss[i].who)}\n" + indent(f"({inner})", "  "))
+            inner = []
+            for k in range(i, j):
+                CONTINUATION[:] = ss[k + 1:]
+                with frame(ss[i].who):
+                    inner.append(stmt(ss[k].stmt))
+            out.append(f".thinks .{ident(ss[i].who)}\n" + indent("(" + " ;;\n".join(inner) + ")", "  "))
             i = j
         else:
+            CONTINUATION[:] = ss[i + 1:]
             out.append(stmt(ss[i]))
             i += 1
     return " ;;\n".join(out) if out else ".pass"
@@ -206,11 +459,22 @@ def stmts(ss) -> str:
 
 def model(f, name: str | None = None) -> str:
     pctxt, ss, rets = parse_memo(f)
-    params = " ".join(map(ident, pctxt.static_parameters))
+    EXOTIC_HERE.clear(); EXOTIC_HERE.update(pctxt.exotic_parameters)
+    params = " ".join(ident(p) for p in pctxt.static_parameters if p not in EXOTIC_HERE)
     binder = f" ({params} : ℚ)" if params else ""
-    if len(rets) != 1:
-        raise Unsupported("a model with several return values")
+    PREFIX.clear(); CONTINUATION.clear(); GOALS.clear()
+    for n in nodes([ss, rets]):
+        match n:
+            case SForAll(id=x, domain=d):
+                DOMAIN[x] = d
+            case SChoose(choices=cs):
+                DOMAIN.update(cs)
     axes = ", ".join(f"(.{ident(s.id)}, .{s.domain})" for s in ss if isinstance(s, SForAll))
     body = stmts([s for s in ss if not isinstance(s, SForAll)])
-    return (f"def {ident(name or f.__name__)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"
-            f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(rets[0])}\n")
+    PREFIX.clear(); CONTINUATION.clear()
+    variant = ROOT_VARIANT.get(name or f.__name__)
+    variant = f"  variant := .{VARIANTS[variant]}\n" if variant else ""
+    return "\n".join(
+        f"def {ident(n)}{binder} : Model Agent Name Dom (Refs Ix Fn) where\n"
+        f"  axes := [{axes}]\n  body :=\n{indent(body, '    ')}\n  ret := {expr(ret)}\n{variant}"
+        for n, ret in zip(def_names(name or f.__name__, len(rets)), rets))

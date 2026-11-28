@@ -10,11 +10,14 @@ import pathlib
 import signal
 import sys
 import tempfile
+import types
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 from memo import codegen
 
+import memo2lean
+from memo.parse import parse_memo
 from memo2lean import Unsupported, model
 
 seen = []
@@ -53,17 +56,30 @@ def main() -> None:
         note = ""
         signal.signal(signal.SIGALRM, timeout)
         signal.alarm(180)
+        scope = {"__name__": "__main__", "__file__": ""}
         try:
             os.chdir(folder)
             # memo reads a model's source back from its file, so a notebook's code goes in a file
             script = pathlib.Path(tempfile.mkdtemp()) / (path.stem.replace("-", "_") + ".py")
             script.write_text(source(path))
-            exec(compile(script.read_text(), str(script), "exec"),
-                 {"__name__": "__main__", "__file__": str(script)})
+            exec(compile(script.read_text(), str(script), "exec"), scope)
         except BaseException as e:  # a demo may need data or packages that are not here
             note = f"  (stopped: {type(e).__name__})"
         finally:
             signal.alarm(0)
+        # a Python expression in braces is read in the module of the model
+        made = [vars(v) for v in scope.values() if isinstance(v, types.ModuleType)
+                and getattr(v, "__file__", None) is None]
+        memo2lean.INLINE_ENV = {k: v for d in [scope] + made for k, v in d.items()}
+        memo2lean.SIGNATURES, memo2lean.RETURNS = {}, {}
+        for f in seen:
+            try:
+                ctxt, _, rets = parse_memo(f)
+                memo2lean.RETURNS[f.__name__] = len(rets)
+                memo2lean.SIGNATURES[f.__name__] = (list(ctxt.static_parameters),
+                                                   list(ctxt.static_defaults))
+            except Exception:
+                pass
         ok, bad = 0, collections.Counter()
         for f in seen:
             try:

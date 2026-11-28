@@ -63,7 +63,24 @@ def get [Zero K] (t : Table K) (σ : ℕ → ℕ) : K := t.data.getD (index size
 /-- The assignment that gives the variables `vars` the positions `js`, and zero elsewhere. -/
 def assign (vars : List ℕ) (js : List ℕ) (i : ℕ) : ℕ := ((vars.zip js).lookup i).getD 0
 
+/-- `ofFn`, as it is run: the numbers are computed one by one from their place in the array, and
+the list of all the lists of positions is not built. -/
+def ofFnImpl (vars : List ℕ) (f : (ℕ → ℕ) → K) : Table K :=
+  let sizes := (vars.map size).toArray
+  ⟨vars, Array.ofFn (n := sizes.foldl (· * ·) 1) fun place ↦
+    -- the positions of the variables at this place, the last variable counting fastest
+    let digits := Id.run do
+      let mut digits := Array.replicate sizes.size 0
+      let mut rest := place.val
+      for back in [0:sizes.size] do
+        let p := sizes.size - 1 - back
+        digits := digits.set! p (rest % sizes[p]!)
+        rest := rest / sizes[p]!
+      return digits
+    f fun i ↦ digits.getD (vars.idxOf i) 0⟩
+
 /-- The table on the variables `vars` whose numbers are the values of `f`. -/
+@[implemented_by ofFnImpl]
 def ofFn (vars : List ℕ) (f : (ℕ → ℕ) → K) : Table K :=
   ⟨vars, ((positions (vars.map size)).map fun js ↦ f (assign vars js)).toArray⟩
 

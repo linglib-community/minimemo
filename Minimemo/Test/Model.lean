@@ -70,6 +70,18 @@ def leaks : Model Agent Name Dom Fn :=
 
 example : Model.error leaks = some .uncertainReturn := by decide +kernel
 
+/-- An agent cannot be asked about a choice that the asker has forgotten: `b` chooses `y`, `a` is
+told it, `b` forgets it, and `a` is asked for it. -/
+def stale : Model Agent Name Dom Fn where
+  axes := []
+  body :=
+    .chooses .b .y .X (.lit 1) ;;
+    .knows .a (.agent .b) .y ;;
+    .forgets .b [.y]
+  ret := .expect (.query .a (.query .b (.choice .y)))
+
+example : Model.error stale = some (.forgotten .a) := by decide +kernel
+
 /-- A reference to the model one depth below, and to the one two below. -/
 inductive Back
   | one | two

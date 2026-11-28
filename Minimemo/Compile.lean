@@ -66,6 +66,8 @@ structure Scope (A N D : Type u) : Type u where
   agents : A → Option (Scope A N D)
   /-- The observed choices, each with the choice outside that it equals. -/
   links : List (ℕ × ℕ)
+  /-- The variant of memo that the mind has. -/
+  variant : Variant := .adult
 
 /-- The next free number of a choice and the steps so far. -/
 structure Gen (D : Type u) (F : ℕ → Type u) : Type u where
@@ -105,7 +107,7 @@ def erase (S : Scope A N D) (as : List (Ref A × N)) : Scope A N D :=
 /-- The scope of the agent `α` in a scope. An agent of whom nothing was said has the empty scope,
 whose belief is the table `0`. -/
 def agent (S : Scope A N D) (α : A) : Scope A N D :=
-  (S.agents α).getD ⟨0, [], fun _ ↦ none, []⟩
+  (S.agents α).getD ⟨0, [], fun _ ↦ none, [], S.variant⟩
 
 /-- The scope in which the scope of the agent `α` is `Sα`. -/
 def setAgent (S : Scope A N D) (α : A) (Sα : Scope A N D) : Scope A N D :=
@@ -113,6 +115,9 @@ def setAgent (S : Scope A N D) (α : A) (Sα : Scope A N D) : Scope A N D :=
 
 /-- The choice that a choice of the scope equals outside. -/
 def link (S : Scope A N D) (i : ℕ) : ℕ := (S.links.lookup i).getD i
+
+/-- Whether the mind has the choice with the number `i`. -/
+def has (S : Scope A N D) (i : ℕ) : Bool := S.entries.any (·.2.index == i)
 
 end Scope
 
@@ -137,6 +142,15 @@ inductive Error (A N : Type u) : Type u
   | alreadyCertain (α β : A) (x : N)
   /-- The agent `α` cannot forget `x`: it has no such choice of its own, or it was told it. -/
   | cannotForget (α : A) (x : N)
+  /-- What the agent `α` answers, or the weight of its choice, depends on a choice that the mind
+  asking has forgotten. -/
+  | forgotten (α : A)
+  /-- An entropy or a divergence is taken of a choice that the mind is certain of. -/
+  | certainChoice (γ : Ref A) (x : N)
+  /-- A divergence is taken between a choice and one from another domain. -/
+  | differentDomains (γ : Ref A) (x : N)
+  /-- A statement about the agent `α` is not in the variant of memo that the mind has. -/
+  | notInVariant (α : A)
   deriving DecidableEq, Repr
 
 /-- An optional value, or the error `e`. -/
@@ -146,7 +160,7 @@ mutual
 
 /-- The domains of the choices that an expression imagines, in the order of their numbers. -/
 def Expr.doms : Expr A N D F → List D
-  | .lit _ | .choice _ => []
+  | .lit _ | .choice _ | .entropy .. | .divergence .. => []
   | .op _ es => (List.finRange _).flatMap fun i ↦ Expr.doms (es i)
   | .query _ e | .expect e => Expr.doms e
   | .imagine s e => Stmt.doms s ++ Expr.doms e
@@ -155,11 +169,11 @@ def Expr.doms : Expr A N D F → List D
 in the order of their numbers. -/
 def Stmt.doms : Stmt A N D F → List D
   | .chooses _ _ X e | .choosesMax _ _ X e => X :: Expr.doms e
-  | .choosesMany _ xs e => xs.map (·.2) ++ Expr.doms e
+  | .choosesMany _ xs e | .choosesManyMax _ xs e => xs.map (·.2) ++ Expr.doms e
   | .observesEvent _ e => Expr.doms e
   | .thinks _ s => Stmt.doms s
   | .seq s₁ s₂ => Stmt.doms s₁ ++ Stmt.doms s₂
-  | .observes .. | .knows .. | .snapshot .. | .forgets .. | .pass => []
+  | .observes .. | .knows .. | .snapshot .. | .variant .. | .forgets .. | .pass => []
 
 end
 
@@ -178,6 +192,7 @@ def choose (S : Scope A N D) (g : Gen D F) (α : A) (xs : List (N × D)) (wrap :
     if deps.all (· ∈ Sα'.certain) then
       let S' := xs.zipIdx.foldl
         (fun S p ↦ S.insert (.agent α, p.1.1) ⟨g.next + p.2, p.1.2, false, false⟩) S
+      if !(deps.map Sα'.link).all S'.has then .error (.forgotten α) else
       let (g₁, r) := g.push (.rename Sα'.links (wrap t))
       let (g', w) := g₁.push (Term.chooses S.table (xs.zipIdx.map fun p ↦ g.next + p.2) (.ref r))
       pure ({ S'.setAgent α Sα' with table := w }, { g' with next := g.next + xs.length + extra })
@@ -207,12 +222,32 @@ def Expr.term (e : Expr A N D F) (S : Scope A N D) (g : Gen D F) :
   | .query α e => do
     let Sα := S.agent α
     let (t, deps) ← Expr.term e Sα g
-    if deps.all (· ∈ Sα.certain) then pure (.rename Sα.links t, (deps.map Sα.link).dedup)
+    if deps.all (· ∈ Sα.certain) then
+      let deps' := (deps.map Sα.link).dedup
+      if deps'.all S.has then pure (.rename Sα.links t, deps') else .error (.forgotten α)
     else .error (.uncertainQuery α)
   | .expect e => do
     let (t, deps) ← Expr.term e S g
     if deps.all (· ∈ S.certain) then pure (t, deps)
     else pure (Term.expect S.table S.uncertain t, S.certain)
+  | .entropy h xs => do
+    let cs ← xs.mapM fun x ↦ orError (S.entries.lookup x) (.unknownChoice x.1 x.2)
+    match (xs.zip cs).find? fun p ↦ p.2.certain with
+    | some p => .error (.certainChoice p.1.1 p.1.2)
+    | none =>
+      let over := (cs.map (·.index)).dedup
+      let marginal : Term D F := .sum (S.uncertain.filter (· ∉ over)) (.ref S.table)
+      pure (.sum over (.app (.inr h) [marginal]), S.certain)
+  | .divergence d p q => do
+    let cp ← orError (S.entries.lookup p) (.unknownChoice p.1 p.2)
+    let cq ← orError (S.entries.lookup q) (.unknownChoice q.1 q.2)
+    if cp.certain then .error (.certainChoice p.1 p.2)
+    else if cq.certain then .error (.certainChoice q.1 q.2)
+    else if cp.dom ≠ cq.dom then .error (.differentDomains p.1 p.2)
+    else
+      let of (i : ℕ) : Term D F := .sum (S.uncertain.filter (· ≠ i)) (.ref S.table)
+      pure (.sum [cp.index]
+        (.app (.inr d) [of cp.index, .rename [(cq.index, cp.index)] (of cq.index)]), S.certain)
   | .imagine s e => do
     let (S', g') ← Stmt.steps s S g
     let (t, deps) ← Expr.term e S' g'
@@ -231,14 +266,19 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     let (S', g') ← Stmt.steps s₁ S g
     Stmt.steps s₂ S' g'
   | .thinks α s => do
+    if S.variant = .child ∨ S.variant = .noThinks then .error (.notInVariant α) else
     let (Sα, g') ← Stmt.steps s (S.agent α) g
     pure (S.setAgent α Sα, g')
+  | .variant α v => pure (S.setAgent α { S.agent α with variant := v }, g)
   | .chooses α x X e =>
     choose S g α [(x, X)] id (Expr.doms e).length
       (Expr.term e ((S.agent α).own [(x, X)] g.next) { g with next := g.next + 1 })
   | .choosesMax α x X e =>
     choose S g α [(x, X)] (.best g.next) (Expr.doms e).length
       (Expr.term e ((S.agent α).own [(x, X)] g.next) { g with next := g.next + 1 })
+  | .choosesManyMax α xs e =>
+    choose S g α xs (Term.bestOver (xs.zipIdx.map fun p ↦ g.next + p.2)) (Expr.doms e).length
+      (Expr.term e ((S.agent α).own xs g.next) { g with next := g.next + xs.length })
   | .choosesMany α xs e =>
     choose S g α xs id (Expr.doms e).length
       (Expr.term e ((S.agent α).own xs g.next) { g with next := g.next + xs.length })
@@ -262,6 +302,7 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     pure (S.setAgent α { Sα with table := w' },
       { g'' with next := g.next + (Expr.doms e).length })
   | .knows α γ y => do
+    if S.variant = .noKnows then .error (.notInVariant α) else
     let c ← orError (S.entries.lookup (γ, y)) (.unknownChoice γ y)
     let Sα := S.agent α
     let c' : Entry D := { c with certain := true, given := true }
@@ -270,14 +311,18 @@ def Stmt.steps (s : Stmt A N D F) (S : Scope A N D) (g : Gen D F) :
     | .agent β =>
       pure (S.setAgent α
         ((Sα.insert (.agent β, y) c').setAgent β ((Sα.agent β).insert (.self, y) c')), g)
-  | .snapshot α β =>
-    let Sα := S.agent α
+  | .snapshot γ β =>
+    let Sα := match γ with
+      | .self => S
+      | .agent α => S.agent α
     let Sβ : Scope A N D :=
       { Sα with entries := Sα.entries.map fun p ↦ (p.1, { p.2 with given := true }), links := [] }
     let Sα' := Sα.entries.foldl
       (fun S p ↦ if p.1.1 = .self then S.insert (.agent β, p.1.2) { p.2 with given := true }
         else S) Sα
-    .ok (S.setAgent α (Sα'.setAgent β Sβ), g)
+    match γ with
+    | .self => .ok (Sα'.setAgent β Sβ, g)
+    | .agent α => .ok (S.setAgent α (Sα'.setAgent β Sβ), g)
   | .forgets α xs => do
     let Sα := S.agent α
     match xs.find? fun x ↦ !((Sα.entries.lookup (.self, x)).any (!·.given) &&
@@ -298,7 +343,8 @@ only. -/
 def Model.program (M : Model A N D F) : Except (Error A N) (Program D F) := do
   let k := M.axes.length
   let S₀ : Scope A N D :=
-    ⟨0, M.axes.zipIdx.map fun p ↦ ((.self, p.1.1), ⟨p.2, p.1.2, true, false⟩), fun _ ↦ none, []⟩
+    ⟨0, M.axes.zipIdx.map fun p ↦ ((.self, p.1.1), ⟨p.2, p.1.2, true, false⟩), fun _ ↦ none, [],
+      M.variant⟩
   let (S, g) ← Stmt.steps M.body S₀ ⟨k, #[]⟩
   let (t, deps) ← Expr.term M.ret S g
   if deps.all (· < k) then

@@ -65,14 +65,20 @@ inductive Ref (A : Type u) : Type u
   | agent (α : A)
   deriving DecidableEq, Repr
 
-/-- The **operators of memo that leave the rational numbers**: the exponential, the logarithm and
-the power with any exponent. A model uses them as outside functions, with their meaning in the
+/-- The **operators of memo that leave the rational numbers**: the exponential, the logarithm,
+the power with any exponent and the remainder. A model uses them as outside functions, with their meaning in the
 real numbers or in floating point. -/
 inductive Exp : ℕ → Type
   | exp : Exp 1
   | log : Exp 1
   /-- The power `a ** b`. -/
   | rpow : Exp 2
+  /-- The remainder `a % b`, with the sign of `b`. -/
+  | mod : Exp 2
+  /-- The term `-p * log p` of an entropy, which is zero at zero. -/
+  | negMulLog : Exp 1
+  /-- The term `a * log (a / b)` of a divergence, which is zero where `a` is zero. -/
+  | klTerm : Exp 2
   deriving DecidableEq, Repr
 
 /-- The **operators** of memo, by their number of arguments. A test has the value one when it
@@ -104,6 +110,13 @@ inductive Prim : ℕ → Type
   | ite : Prim 3
   deriving DecidableEq
 
+/-- A **variant** of memo is the language without some of its statements. A mind with the variant
+`child` or `noThinks` has no `thinks`, one with `noKnows` no `knows`, and one with `noWants` no
+`wants`. A mind has the variant of the mind that models it, unless it is given another. -/
+inductive Variant
+  | adult | child | noThinks | noKnows | noWants
+  deriving DecidableEq, Repr
+
 mutual
 
 /-- An **expression** of memo denotes a number that depends on choices. -/
@@ -121,6 +134,13 @@ inductive Expr (A N D : Type u) (F : ℕ → Type u) : Type u
   | expect (e : Expr A N D F)
   /-- The hypothetical `imagine[s, e]`: the value of `e` if the statement `s` were to happen. -/
   | imagine (s : Stmt A N D F) (e : Expr A N D F)
+  /-- The sum, over the values of the choices `xs` that the current agent is uncertain of, of the
+  outside function `h` of their probability. With `h p = -p * log p` this is the entropy `H[xs]`. -/
+  | entropy (h : F 1) (xs : List (Ref A × N))
+  /-- The sum, over the values of the choice `p`, of the outside function `d` of the probability
+  of `p` and the probability that the choice `q` has that value. With `d a b = a * log (a / b)`
+  this is the divergence `KL[p | q]`. -/
+  | divergence (d : F 2) (p q : Ref A × N)
 
 /-- A **statement** of memo changes the frames of mind of the agents. -/
 inductive Stmt (A N D : Type u) (F : ℕ → Type u) : Type u
@@ -133,12 +153,18 @@ inductive Stmt (A N D : Type u) (F : ℕ → Type u) : Type u
   /-- The statement `α: chooses(x in X, y in Y, wpp=e)`: the agent `α` chooses several values
   together, with probability proportional to `e`. -/
   | choosesMany (α : A) (xs : List (N × D)) (e : Expr A N D F)
+  /-- The statement `α: chooses(x in X, y in Y, to_maximize=e)`: the agent `α` makes the choices
+  `xs` together, uniformly among the values at which `e` is greatest. -/
+  | choosesManyMax (α : A) (xs : List (N × D)) (e : Expr A N D F)
   /-- The statement `α: chooses(x in X, to_maximize=e)`: the agent `α` chooses `x` from the domain
   `X` uniformly among the values at which `e` is greatest. -/
   | choosesMax (α : A) (x : N) (X : D) (e : Expr A N D F)
   /-- The statement `α: snapshots_self_as(β)`: the agent `α` gets a model of an agent `β` that is a
-  copy of `α` as it is now. -/
-  | snapshot (α β : A)
+  copy of `α` as it is now. With `.self` for `α`, the mind itself gets the copy: an agent who
+  imagines its own future starts from one. -/
+  | snapshot (α : Ref A) (β : A)
+  /-- The statement `α: has_theory(v)`: the mind of the agent `α` has the variant `v`. -/
+  | variant (α : A) (v : Variant)
   /-- The statement `α: forgets_about(x, y)`: the agent `α` no longer has the choices `xs`, and
   the current agent no longer follows them. -/
   | forgets (α : A) (xs : List N)
@@ -180,5 +206,7 @@ structure Model (A N D : Type u) (F : ℕ → Type u) where
   body : Stmt A N D F
   /-- The expression that the model returns. -/
   ret : Expr A N D F
+  /-- The variant of memo that the model is written in. -/
+  variant : Variant := .adult
 
 end Memo

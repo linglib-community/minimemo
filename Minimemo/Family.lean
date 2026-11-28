@@ -31,6 +31,8 @@ values of the expressions.
 * `Memo.Model.refs M`: the references in a model.
 * `Memo.Family.call`: the meaning of references and outside functions in a member, when the
   arrays of the members are given.
+* `Memo.Family.interp fam of dom fn n p`: the interpretation of the member `p`, in which each
+  array that is referred to is computed once.
 * `Memo.Family.entries fam of dom fn n p`: the array of the member `p`, where references are
   followed to the depth `n`.
 
@@ -68,7 +70,7 @@ mutual
 
 /-- The references in an expression. -/
 def Expr.refs : Expr A N D (Refs R F) → List R
-  | .lit _ | .choice _ => []
+  | .lit _ | .choice _ | .entropy .. | .divergence .. => []
   | .op (.inr (.inl r)) es => r :: (List.finRange _).flatMap fun i ↦ Expr.refs (es i)
   | .op _ es => (List.finRange _).flatMap fun i ↦ Expr.refs (es i)
   | .query _ e | .expect e => Expr.refs e
@@ -76,10 +78,11 @@ def Expr.refs : Expr A N D (Refs R F) → List R
 
 /-- The references in a statement. -/
 def Stmt.refs : Stmt A N D (Refs R F) → List R
-  | .chooses _ _ _ e | .choosesMax _ _ _ e | .choosesMany _ _ e | .observesEvent _ e => Expr.refs e
+  | .chooses _ _ _ e | .choosesMax _ _ _ e | .choosesMany _ _ e | .choosesManyMax _ _ e
+  | .observesEvent _ e => Expr.refs e
   | .thinks _ s => Stmt.refs s
   | .seq s₁ s₂ => Stmt.refs s₁ ++ Stmt.refs s₂
-  | .observes .. | .knows .. | .snapshot .. | .forgets .. | .pass => []
+  | .observes .. | .knows .. | .snapshot .. | .variant .. | .forgets .. | .pass => []
 
 end
 
@@ -122,5 +125,27 @@ def Family.entries : ℕ → P → List K
       (fam.target p r, Family.entries n (fam.target p r))
     (Model.entries (of dom (fam.call dom fn (fun q ↦ (arrays.lookup q).getD []) p))
       (fam.model p)).getD []
+
+/-- The arrays of a member and of the members that it refers to, each computed once: the list
+`cache` holds those found so far. A family whose members refer to one another along many paths
+is computed in as many steps as it has members, where `Family.entries` takes a step for each
+path. The two give the same array when the depth `n` is at least the number of references that
+are followed from the member, one inside the other. -/
+def Family.fill : ℕ → P → List (P × List K) → List (P × List K)
+  | 0, _, cache => cache
+  | n + 1, p, cache =>
+    if (cache.lookup p).isSome then cache
+    else
+      let cache := (fam.model p).refs.foldl (fun cache r ↦ Family.fill n (fam.target p r) cache)
+        cache
+      (p, (Model.entries (of dom (fam.call dom fn (fun q ↦ (cache.lookup q).getD []) p))
+        (fam.model p)).getD []) :: cache
+
+/-- The meaning of the references and the outside functions in the member `p`, where each array
+that is referred to is computed once. -/
+def Family.interp (n : ℕ) (p : P) : Interp D (Refs R F) K :=
+  let cache := (fam.model p).refs.foldl (fun cache r ↦ fam.fill of dom fn n (fam.target p r) cache)
+    []
+  of dom (fam.call dom fn (fun q ↦ (cache.lookup q).getD []) p)
 
 end Memo

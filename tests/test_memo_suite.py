@@ -20,15 +20,16 @@ from memo import codegen
 from memo.core import EMemo, MemoError
 from memo.parse import parse_memo
 
-from lean import ROOT, agree, nodes, run, source
-from memo2lean import Unsupported
+from lean import ROOT, nodes, run, source, verdict
+import memo2lean
+from memo2lean import Rejected, Unsupported
 
 
 @dataclasses.dataclass
 class Test:
     f: object        # the model, as a function
     known: dict      # the models defined before it, by name
-    module: object   # the module that holds the domains and the functions
+    env: dict        # the domains and the functions, as they were when the test was defined
     outcome: str     # what memo does: "pass", or "ce" (rejects the model)
     out: object      # the array that memo returns
     args: tuple      # the parameters
@@ -51,9 +52,11 @@ def memo_test(mod, expect="pass", item=None, *args, **kwargs):
             outcome = "ce"
         except Exception:
             outcome = "re"
-        # a test that memo fails to run, or one of a variant of memo, has nothing to compare
-        if outcome == expect != "re" and "variant" not in kwargs:
-            tests.append(Test(f, dict(known), mod, outcome, out, args))
+        # a test that memo fails to run has nothing to compare
+        if "variant" in kwargs:
+            memo2lean.ROOT_VARIANT[f.__name__] = kwargs["variant"].name
+        if outcome == expect != "re":
+            tests.append(Test(f, dict(known), dict(vars(mod)), outcome, out, args))
         known[f.__name__] = f
         return getattr(mod, f.__name__, None)
     return helper
@@ -95,12 +98,14 @@ def check(i: int, t: Test) -> tuple[str, str]:
     except MemoError:
         return "skipped", "not in memo's grammar"
     try:
-        env = vars(t.module)
+        env = t.env
         defaults = ctxt.static_defaults[len(t.args):]
         if None in defaults:
             raise Unsupported("a model that is given no parameters")
         given = list(t.args) + [eval(d, env) for d in defaults]
         text, sizes = source(models(t), env, {name: given}, shown=[t.f])
+    except Rejected as e:
+        return ("ok" if t.outcome == "ce" else "differs"), f"rejected: {e}"
     except Unsupported as e:
         return "skipped", str(e)
     except Exception as e:
@@ -109,14 +114,16 @@ def check(i: int, t: Test) -> tuple[str, str]:
         results, reasons = run(text, ROOT / "scratch" / "memotests" / f"T{i}.lean", timeout=60)
     except subprocess.TimeoutExpired:
         return "skipped", "too slow"
+    except Unsupported as e:
+        return "skipped", str(e)
     except RuntimeError as e:
         return "differs", "Lean does not accept the file: " + str(e).strip().split("\n")[0][:80]
-    got, reason = results[0], reasons[0]
-    if t.outcome == "ce":
-        return ("ok", f"rejected: {reason}") if got is None else ("differs", "memo rejects it")
-    if got is None:
-        return "differs", f"minimemo rejects it: {reason}"
-    return ("ok", "") if agree(got, t.out, sizes[name]) else ("differs", "the arrays differ")
+    try:
+        ok, why = verdict(name, iter(results), iter(reasons),
+                          None if t.outcome == "ce" else t.out, sizes)
+    except Exception as e:  # what Lean printed is not an array for each value returned
+        return "differs", f"Lean's output was not read: {type(e).__name__}"
+    return ("ok" if ok else "differs"), why
 
 
 def collect() -> list[Test]:
